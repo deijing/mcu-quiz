@@ -26,6 +26,7 @@ import { MobileBottomBar } from './components/MobileBottomBar';
 import { AnswerSheetDrawer } from './components/AnswerSheetDrawer';
 import { CommandSearchDialog } from './components/CommandSearchDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
+import { ResetProgressDialog } from './components/ResetProgressDialog';
 
 export const App: React.FC = () => {
   // 1. Persistent Settings & State
@@ -40,6 +41,7 @@ export const App: React.FC = () => {
   const [isSheetOpen, setIsSheetOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isResetOpen, setIsResetOpen] = useState(false);
 
   // 4. Stable Shuffled Order
   const [shuffledIds, setShuffledIds] = useState<number[]>([]);
@@ -344,15 +346,59 @@ export const App: React.FC = () => {
     playSound('click', settings.soundEnabled);
   }, [currentQuestion, settings.soundEnabled]);
 
-  // Reset All Progress
+  // Open "重新做题" confirmation dialog
   const handleResetAllProgress = useCallback(() => {
-    if (window.confirm('确定要清空所有刷题记录与做题历史吗？此操作不可撤销。')) {
-      clearAllProgress();
-      setUserStatusMap({});
-      setCurrentIndex(0);
-      playSound('wrong', settings.soundEnabled);
-    }
+    setIsResetOpen(true);
+    playSound('click', settings.soundEnabled);
   }, [settings.soundEnabled]);
+
+  // Reset All Progress: 清空历史记录并从第 1 题重新开始
+  const handleConfirmReset = useCallback(
+    ({ keepStarred }: { keepStarred: boolean }) => {
+      clearAllProgress();
+
+      setUserStatusMap((prev) => {
+        if (!keepStarred) return {};
+        // 只保留收藏标记，答题对错与解析展开状态全部清空
+        const next: Record<number, QuestionUserStatus> = {};
+        Object.entries(prev).forEach(([id, status]) => {
+          if (status.starred) {
+            next[Number(id)] = { answered: false, starred: true };
+          }
+        });
+        return next;
+      });
+
+      // 回到全部题目、第 1 题；错题本/收藏夹被清空后不再停留在空列表
+      setSettings((prev) => ({
+        ...prev,
+        filterType: 'all',
+        selectedTag: 'all',
+        mode:
+          prev.mode === 'wrong' || (prev.mode === 'starred' && !keepStarred)
+            ? 'recite'
+            : prev.mode,
+      }));
+      setCurrentIndex(0);
+      setSlideDirection('none');
+      setIsResetOpen(false);
+      setIsSheetOpen(false);
+
+      // 乱序模式下重新洗牌，保证新一轮顺序是全新的
+      if (settings.isShuffled) {
+        const ids = allQuestions.map((q) => q.id);
+        for (let i = ids.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [ids[i], ids[j]] = [ids[j], ids[i]];
+        }
+        setShuffledIds(ids);
+      }
+
+      playSound('click', settings.soundEnabled);
+      triggerHaptic('light');
+    },
+    [settings.isShuffled, settings.soundEnabled]
+  );
 
   // Cycle Theme
   const handleThemeCycle = useCallback(() => {
@@ -376,17 +422,21 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Cmd+K / Ctrl+K
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsSearchOpen((prev) => !prev);
-        return;
-      }
-
       if (e.key === 'Escape') {
         setIsSearchOpen(false);
         setIsSheetOpen(false);
         setIsShortcutsOpen(false);
+        setIsResetOpen(false);
+        return;
+      }
+
+      // 确认弹窗打开时，屏蔽其他快捷键，避免误操作
+      if (isResetOpen) return;
+
+      // Cmd+K / Ctrl+K
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
         return;
       }
 
@@ -452,6 +502,7 @@ export const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [
     isSearchOpen,
+    isResetOpen,
     settings.mode,
     currentQuestion,
     currentStatus,
@@ -629,6 +680,7 @@ export const App: React.FC = () => {
         currentQuestionId={currentQuestion?.id || 1}
         userStatusMap={userStatusMap}
         onSelectQuestion={handleJumpToQuestion}
+        onResetProgress={handleResetAllProgress}
       />
 
       {/* 8. Command Palette: Instant ⌘K Search */}
@@ -643,6 +695,14 @@ export const App: React.FC = () => {
       <ShortcutsDialog
         isOpen={isShortcutsOpen}
         onClose={() => setIsShortcutsOpen(false)}
+      />
+
+      {/* 10. Reset Progress Confirmation Dialog */}
+      <ResetProgressDialog
+        isOpen={isResetOpen}
+        onClose={() => setIsResetOpen(false)}
+        stats={stats}
+        onConfirm={handleConfirmReset}
       />
     </div>
   );

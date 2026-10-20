@@ -36,3 +36,6 @@ pnpm-debug.log*
 __pycache__/
 *.py[cod]
 .venv/
+
+# local test artifacts
+.artifacts/

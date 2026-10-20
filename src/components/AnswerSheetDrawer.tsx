@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, CheckCircle2, XCircle, Star, HelpCircle } from 'lucide-react';
+import { X, CheckCircle2, XCircle, Star, HelpCircle, RotateCcw } from 'lucide-react';
 import { Question, QuestionUserStatus } from '../types/question';
+import { Button } from './ui/button';
 
 interface AnswerSheetDrawerProps {
   isOpen: boolean;
@@ -9,6 +10,7 @@ interface AnswerSheetDrawerProps {
   currentQuestionId: number;
   userStatusMap: Record<number, QuestionUserStatus>;
   onSelectQuestion: (questionId: number) => void;
+  onResetProgress: () => void;
 }
 
 type FilterStatus = 'all' | 'correct' | 'wrong' | 'unanswered' | 'starred';
@@ -20,6 +22,7 @@ export const AnswerSheetDrawer: React.FC<AnswerSheetDrawerProps> = ({
   currentQuestionId,
   userStatusMap,
   onSelectQuestion,
+  onResetProgress,
 }) => {
   const [filter, setFilter] = useState<FilterStatus>('all');
 
@@ -142,6 +145,22 @@ export const AnswerSheetDrawer: React.FC<AnswerSheetDrawerProps> = ({
               当前分类下暂无题目
             </div>
           )}
+        </div>
+
+        {/* Reset Progress Action */}
+        <div className="px-3 py-2 border-t bg-background shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              onClose();
+              onResetProgress();
+            }}
+            className="w-full h-9 gap-1.5 text-xs text-muted-foreground hover:text-destructive hover:border-destructive/40 hover:bg-destructive/5 active:scale-[0.99]"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            <span>重新做题（清空记录）</span>
+          </Button>
         </div>
 
         {/* Legend */}

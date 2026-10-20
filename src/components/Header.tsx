@@ -58,7 +58,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex flex-col">
           <div className="flex items-center gap-1">
             <span className="font-bold text-xs sm:text-sm tracking-tight text-foreground whitespace-nowrap">
-              单片机刷题宝
+              <span className="sm:hidden">刷题宝</span>
+              <span className="hidden sm:inline">单片机刷题宝</span>
             </span>
             <span className="text-[10px] bg-primary/10 text-primary px-1 rounded font-semibold hidden lg:inline-block">
               320题
@@ -127,11 +128,11 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Mobile View: Compact 2-Option Segmented Control (背题 / 自测) */}
-      <div className="flex md:hidden items-center">
+      <div className="flex md:hidden items-center shrink-0">
         <div className="flex items-center rounded-lg bg-muted p-0.5 border border-border/50 text-xs">
           <button
             onClick={() => onModeChange('recite')}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-medium transition-all ${
+            className={`flex items-center gap-1 px-2 py-1 rounded-md font-medium whitespace-nowrap transition-all ${
               mode === 'recite'
                 ? 'bg-background text-foreground shadow-xs font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
@@ -142,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
           <button
             onClick={() => onModeChange('practice')}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-medium transition-all ${
+            className={`flex items-center gap-1 px-2 py-1 rounded-md font-medium whitespace-nowrap transition-all ${
               mode === 'practice'
                 ? 'bg-background text-foreground shadow-xs font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
@@ -217,13 +218,14 @@ export const Header: React.FC<HeaderProps> = ({
         </Button>
 
         <Button
-          variant="ghost"
-          size="icon"
+          variant="outline"
+          size="sm"
           onClick={onResetProgress}
-          title="清空答题记录重做"
-          className="h-8 w-8 text-muted-foreground hover:text-destructive hidden sm:inline-flex"
+          title="重新做题：清空答题记录，从第 1 题重新开始"
+          className="hidden min-[360px]:inline-flex h-8 px-2 sm:px-2.5 gap-1.5 rounded-full border-border/70 text-muted-foreground hover:text-destructive hover:border-destructive/40 hover:bg-destructive/5 active:scale-95"
         >
           <RotateCcw className="h-3.5 w-3.5" />
+          <span className="hidden lg:inline text-xs font-medium">重新做题</span>
         </Button>
       </div>
     </header>
