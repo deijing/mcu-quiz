@@ -13,6 +13,7 @@ import {
   VolumeX, 
   Keyboard, 
   RotateCcw,
+  Sparkles,
   Leaf
 } from 'lucide-react';
 import { Button } from './ui/button';
@@ -32,6 +33,7 @@ interface HeaderProps {
   onOpenSheet: () => void;
   onOpenShortcuts: () => void;
   onResetProgress: () => void;
+  onOpenAiSettings: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -47,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSheet,
   onOpenShortcuts,
   onResetProgress,
+  onOpenAiSettings,
 }) => {
   return (
     <header className="sticky top-0 z-40 h-12 md:h-14 w-full border-b bg-background/95 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between shrink-0 select-none">
@@ -215,6 +218,16 @@ export const Header: React.FC<HeaderProps> = ({
           className="h-8 w-8 text-muted-foreground hover:text-foreground hidden md:inline-flex"
         >
           <Keyboard className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onOpenAiSettings}
+          title="AI 解析设置：接入 OpenAI / Claude 等大模型 API"
+          className="h-8 w-8 text-muted-foreground hover:text-primary hidden lg:inline-flex"
+        >
+          <Sparkles className="h-4 w-4" />
         </Button>
 
         <Button

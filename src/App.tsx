@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { allQuestions, allTags } from './data/questions';
 import { 
@@ -8,14 +8,20 @@ import {
   QuestionUserStatus, 
   UserStats 
 } from './types/question';
-import { 
-  loadAppSettings, 
-  saveAppSettings, 
-  loadUserStatusMap, 
-  saveUserStatusMap, 
+import {
+  loadAppSettings,
+  saveAppSettings,
+  loadUserStatusMap,
+  saveUserStatusMap,
   clearAllProgress,
-  AppSettings 
+  loadAiConfig,
+  saveAiConfig,
+  loadAiCache,
+  saveAiCache,
+  clearAiCache,
+  AppSettings
 } from './lib/storage';
+import { AiCache, AiCacheEntry, AiConfig, pruneAiCache } from './lib/ai';
 import { playSound, triggerHaptic } from './lib/audio';
 import { Header } from './components/Header';
 import { ProgressBar } from './components/ProgressBar';
@@ -27,6 +33,12 @@ import { AnswerSheetDrawer } from './components/AnswerSheetDrawer';
 import { CommandSearchDialog } from './components/CommandSearchDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { ResetProgressDialog } from './components/ResetProgressDialog';
+import { AiSettingsDialog } from './components/AiSettingsDialog';
+
+// AI 解析面板按需加载，避免把 Markdown 渲染库打进首屏包
+const AiExplanationPanel = lazy(() =>
+  import('./components/AiExplanationPanel').then((m) => ({ default: m.AiExplanationPanel }))
+);
 
 export const App: React.FC = () => {
   // 1. Persistent Settings & State
@@ -42,6 +54,12 @@ export const App: React.FC = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isResetOpen, setIsResetOpen] = useState(false);
+
+  // AI 解析配置与缓存（均仅存本机浏览器）
+  const [aiConfig, setAiConfig] = useState<AiConfig>(() => loadAiConfig());
+  const [aiCache, setAiCache] = useState<AiCache>(() => loadAiCache());
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  const [aiQuestion, setAiQuestion] = useState<Question | null>(null);
 
   // 4. Stable Shuffled Order
   const [shuffledIds, setShuffledIds] = useState<number[]>([]);
@@ -66,6 +84,15 @@ export const App: React.FC = () => {
   useEffect(() => {
     saveUserStatusMap(userStatusMap);
   }, [userStatusMap]);
+
+  // Persist AI config & cache
+  useEffect(() => {
+    saveAiConfig(aiConfig);
+  }, [aiConfig]);
+
+  useEffect(() => {
+    saveAiCache(aiCache);
+  }, [aiCache]);
 
   // Shuffle generator
   useEffect(() => {
@@ -400,6 +427,39 @@ export const App: React.FC = () => {
     [settings.isShuffled, settings.soundEnabled]
   );
 
+  // AI 深度解析：未配置时先打开设置
+  const handleOpenAi = useCallback(() => {
+    if (!currentQuestion) return;
+    const isLocalEndpoint = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(aiConfig.baseUrl);
+    const needsSetup =
+      !aiConfig.baseUrl.trim() ||
+      !aiConfig.model.trim() ||
+      (!aiConfig.apiKey.trim() && !isLocalEndpoint);
+    if (needsSetup) {
+      setIsAiSettingsOpen(true);
+      return;
+    }
+    setAiQuestion(currentQuestion);
+    playSound('click', settings.soundEnabled);
+  }, [currentQuestion, aiConfig, settings.soundEnabled]);
+
+  const handleSaveAiConfig = useCallback(
+    (next: AiConfig) => {
+      setAiConfig(next);
+      playSound('click', settings.soundEnabled);
+    },
+    [settings.soundEnabled]
+  );
+
+  const handleAiSaved = useCallback((questionId: number, entry: AiCacheEntry) => {
+    setAiCache((prev) => pruneAiCache({ ...prev, [questionId]: entry }));
+  }, []);
+
+  const handleClearAiCache = useCallback(() => {
+    clearAiCache();
+    setAiCache({});
+  }, []);
+
   // Cycle Theme
   const handleThemeCycle = useCallback(() => {
     const nextTheme: 'light' | 'dark' | 'green' =
@@ -427,11 +487,13 @@ export const App: React.FC = () => {
         setIsSheetOpen(false);
         setIsShortcutsOpen(false);
         setIsResetOpen(false);
+        setIsAiSettingsOpen(false);
+        setAiQuestion(null);
         return;
       }
 
-      // 确认弹窗打开时，屏蔽其他快捷键，避免误操作
-      if (isResetOpen) return;
+      // 确认弹窗、AI 弹窗打开时，屏蔽其他快捷键，避免误操作
+      if (isResetOpen || isAiSettingsOpen || aiQuestion) return;
 
       // Cmd+K / Ctrl+K
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -503,6 +565,8 @@ export const App: React.FC = () => {
   }, [
     isSearchOpen,
     isResetOpen,
+    isAiSettingsOpen,
+    aiQuestion,
     settings.mode,
     currentQuestion,
     currentStatus,
@@ -563,6 +627,7 @@ export const App: React.FC = () => {
         onOpenSheet={() => setIsSheetOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onResetProgress={handleResetAllProgress}
+        onOpenAiSettings={() => setIsAiSettingsOpen(true)}
       />
 
       {/* 2. Progress Tracker Sub-bar */}
@@ -605,6 +670,8 @@ export const App: React.FC = () => {
             onAnswerBlank={handleAnswerBlank}
             onToggleStar={handleToggleStar}
             onToggleReveal={handleToggleReveal}
+            onOpenAi={handleOpenAi}
+            aiCached={!!aiCache[currentQuestion.id]}
           />
         ) : (
           <div className="w-full max-w-md mx-auto my-auto p-8 rounded-xl border bg-card text-center space-y-3">
@@ -703,6 +770,32 @@ export const App: React.FC = () => {
         onClose={() => setIsResetOpen(false)}
         stats={stats}
         onConfirm={handleConfirmReset}
+      />
+
+      {/* 11. AI Explanation Panel（按需加载） */}
+      {aiQuestion && (
+        <Suspense fallback={null}>
+          <AiExplanationPanel
+            isOpen
+            question={aiQuestion}
+            questionNumber={allQuestions.findIndex((q) => q.id === aiQuestion.id) + 1}
+            config={aiConfig}
+            cached={aiCache[aiQuestion.id]}
+            onClose={() => setAiQuestion(null)}
+            onOpenSettings={() => setIsAiSettingsOpen(true)}
+            onSaved={handleAiSaved}
+          />
+        </Suspense>
+      )}
+
+      {/* 12. AI Settings Dialog */}
+      <AiSettingsDialog
+        isOpen={isAiSettingsOpen}
+        config={aiConfig}
+        cacheCount={Object.keys(aiCache).length}
+        onClose={() => setIsAiSettingsOpen(false)}
+        onSave={handleSaveAiConfig}
+        onClearCache={handleClearAiCache}
       />
     </div>
   );

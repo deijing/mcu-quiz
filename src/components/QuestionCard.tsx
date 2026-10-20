@@ -10,7 +10,8 @@ import {
   CheckCheck,
   Code2,
   FileText,
-  BookOpen
+  BookOpen,
+  Sparkles
 } from 'lucide-react';
 import { Question, QuestionUserStatus, StudyMode } from '../types/question';
 import { Badge } from './ui/badge';
@@ -30,6 +31,8 @@ interface QuestionCardProps {
   onAnswerBlank: (answers: string[]) => void;
   onToggleStar: () => void;
   onToggleReveal: () => void;
+  onOpenAi: () => void;
+  aiCached?: boolean;
 }
 
 export const QuestionCard: React.FC<QuestionCardProps> = ({
@@ -44,6 +47,8 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
   onAnswerBlank,
   onToggleStar,
   onToggleReveal,
+  onOpenAi,
+  aiCached = false,
 }) => {
   const [copiedCode, setCopiedCode] = useState(false);
   const [blankInputs, setBlankInputs] = useState<string[]>([]);
@@ -395,6 +400,25 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           )}
         </div>
       )}
+      {/* 5. AI Deep Explanation Entry */}
+      <div className="mt-4 pt-3 border-t flex flex-wrap items-center justify-between gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onOpenAi}
+          className="gap-1.5 rounded-full border-primary/30 text-primary hover:text-primary hover:bg-primary/5 active:scale-95"
+          title="调用你配置的大模型，逐项讲解本题"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span>AI 深度解析</span>
+          {aiCached && (
+            <span className="text-[10px] bg-primary/10 px-1.5 py-0.5 rounded-full">已生成</span>
+          )}
+        </Button>
+        <span className="text-[10.5px] sm:text-[11px] text-muted-foreground/80">
+          {isRevealed ? '接入你自己的大模型 API' : 'AI 解析含答案，建议先作答'}
+        </span>
+      </div>
     </div>
   );
 };
