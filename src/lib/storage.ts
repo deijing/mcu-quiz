@@ -16,6 +16,8 @@ const STORAGE_KEY_STATUS = 'mcu_quiz_user_status_v2';
 const STORAGE_KEY_SETTINGS = 'mcu_quiz_settings_v2';
 const STORAGE_KEY_AI_CONFIG = 'mcu_quiz_ai_config_v1';
 const STORAGE_KEY_AI_CACHE = 'mcu_quiz_ai_cache_v1';
+const STORAGE_KEY_SCROLL = 'mcu_quiz_scroll_v1';
+const STORAGE_KEY_SHUFFLE = 'mcu_quiz_shuffle_v1';
 
 const DEFAULT_SETTINGS: AppSettings = {
   soundEnabled: true,
@@ -131,6 +133,57 @@ export function saveAiCache(cache: AiCache) {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY_AI_CACHE, JSON.stringify(cache));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function loadShuffledIds(): number[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SHUFFLE);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id): id is number => typeof id === 'number') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveShuffledIds(ids: number[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY_SHUFFLE, JSON.stringify(ids));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export interface SavedScroll {
+  id: number;
+  top: number;
+}
+
+export function loadLastScroll(): SavedScroll | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SCROLL);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SavedScroll>;
+    if (typeof parsed.id !== 'number' || typeof parsed.top !== 'number') return null;
+    return { id: parsed.id, top: parsed.top > 0 ? parsed.top : 0 };
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastScroll(id: number, scrollTop: number) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      STORAGE_KEY_SCROLL,
+      JSON.stringify({ id, top: Math.max(0, Math.round(scrollTop)) })
+    );
   } catch {
     // Ignore storage quota errors
   }

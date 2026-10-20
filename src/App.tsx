@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { XCircle, Star } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { allQuestions, allTags } from './data/questions';
@@ -20,6 +20,10 @@ import {
   loadAiCache,
   saveAiCache,
   clearAiCache,
+  loadLastScroll,
+  saveLastScroll,
+  loadShuffledIds,
+  saveShuffledIds,
   AppSettings
 } from './lib/storage';
 import { AiCache, AiCacheEntry, AiConfig, pruneAiCache } from './lib/ai';
@@ -43,14 +47,78 @@ const AiExplanationPanel = lazy(() =>
   import('./components/AiExplanationPanel').then((m) => ({ default: m.AiExplanationPanel }))
 );
 
+
+function shuffleQuestionIds(allIds: number[]): number[] {
+  const ids = [...allIds];
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  return ids;
+}
+
+function buildFilteredQuestions(
+  settings: AppSettings,
+  userStatusMap: Record<number, QuestionUserStatus>,
+  shuffledIds: number[]
+): Question[] {
+  let list = [...allQuestions];
+
+  if (settings.isShuffled && shuffledIds.length === allQuestions.length) {
+    const map = new Map(allQuestions.map((q) => [q.id, q]));
+    list = shuffledIds.map((id) => map.get(id)!).filter(Boolean);
+  }
+
+  if (settings.filterType !== 'all') {
+    list = list.filter((q) => q.type === settings.filterType);
+  }
+
+  if (settings.selectedTag !== 'all') {
+    list = list.filter((q) => q.tags.includes(settings.selectedTag));
+  }
+
+  if (settings.mode === 'wrong') {
+    list = list.filter((q) => {
+      const s = userStatusMap[q.id];
+      return s?.answered && s?.isCorrect === false;
+    });
+  } else if (settings.mode === 'starred') {
+    list = list.filter((q) => !!userStatusMap[q.id]?.starred);
+  }
+
+  return list;
+}
+
 export const App: React.FC = () => {
   // 1. Persistent Settings & State
   const [settings, setSettings] = useState<AppSettings>(() => loadAppSettings());
   const [userStatusMap, setUserStatusMap] = useState<Record<number, QuestionUserStatus>>(() => loadUserStatusMap());
 
-  // 2. Navigation & Animation State
-  const [currentIndex, setCurrentIndex] = useState(0);
+  // 2. Stable Shuffled Order（先初始化，保证刷新后按同一顺序定位）
+  const [shuffledIds, setShuffledIds] = useState<number[]>(() => {
+    if (!settings.isShuffled) return [];
+    const allIds = allQuestions.map((q) => q.id);
+    const saved = loadShuffledIds();
+    const isValid =
+      saved.length === allIds.length &&
+      new Set(saved).size === allIds.length &&
+      saved.every((id) => Number.isInteger(id) && id >= 1 && id <= allQuestions.length);
+    return isValid ? saved : shuffleQuestionIds(allIds);
+  });
+
+  // 3. Navigation & Animation State（刷新后回到上次的题号）
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const list = buildFilteredQuestions(settings, userStatusMap, shuffledIds);
+    const index = list.findIndex((q) => q.id === settings.lastQuestionId);
+    return index >= 0 ? index : 0;
+  });
   const [slideDirection, setSlideDirection] = useState<'right' | 'left' | 'none'>('none');
+
+  const mainRef = useRef<HTMLElement>(null);
+  const scrollSaveTimer = useRef<number | null>(null);
+  const lastScrollQuestionRef = useRef<number | null>(null);
+  const currentQuestionIdRef = useRef<number | undefined>(undefined);
+  const wasShuffledRef = useRef(settings.isShuffled);
 
   // 3. Modals State
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -65,9 +133,6 @@ export const App: React.FC = () => {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState<Question | null>(null);
-
-  // 4. Stable Shuffled Order
-  const [shuffledIds, setShuffledIds] = useState<number[]>([]);
 
   // Update HTML theme class
   useEffect(() => {
@@ -99,50 +164,31 @@ export const App: React.FC = () => {
     saveAiCache(aiCache);
   }, [aiCache]);
 
-  // Shuffle generator
+  // 记住乱序顺序，刷新后保持同一套题序
   useEffect(() => {
-    if (settings.isShuffled) {
-      const ids = allQuestions.map((q) => q.id);
-      for (let i = ids.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [ids[i], ids[j]] = [ids[j], ids[i]];
-      }
-      setShuffledIds(ids);
+    if (shuffledIds.length === allQuestions.length) saveShuffledIds(shuffledIds);
+  }, [shuffledIds]);
+
+  // 切换乱序时重新洗牌（首次加载已由 useState 初始化，避免顺序被再次打乱）
+  useEffect(() => {
+    if (settings.isShuffled && !wasShuffledRef.current) {
+      setShuffledIds(shuffleQuestionIds(allQuestions.map((q) => q.id)));
     }
+    wasShuffledRef.current = settings.isShuffled;
   }, [settings.isShuffled]);
 
   // 5. Filter Questions Pipeline
-  const filteredQuestions = useMemo(() => {
-    let list = [...allQuestions];
-
-    // If shuffled
-    if (settings.isShuffled && shuffledIds.length === allQuestions.length) {
-      const map = new Map(allQuestions.map((q) => [q.id, q]));
-      list = shuffledIds.map((id) => map.get(id)!).filter(Boolean);
-    }
-
-    // Filter by type
-    if (settings.filterType !== 'all') {
-      list = list.filter((q) => q.type === settings.filterType);
-    }
-
-    // Filter by tag
-    if (settings.selectedTag !== 'all') {
-      list = list.filter((q) => q.tags.includes(settings.selectedTag));
-    }
-
-    // Filter by mode
-    if (settings.mode === 'wrong') {
-      list = list.filter((q) => {
-        const s = userStatusMap[q.id];
-        return s?.answered && s?.isCorrect === false;
-      });
-    } else if (settings.mode === 'starred') {
-      list = list.filter((q) => !!userStatusMap[q.id]?.starred);
-    }
-
-    return list;
-  }, [settings.isShuffled, shuffledIds, settings.filterType, settings.selectedTag, settings.mode, userStatusMap]);
+  const filteredQuestions = useMemo(
+    () => buildFilteredQuestions(settings, userStatusMap, shuffledIds),
+    [
+      settings.isShuffled,
+      shuffledIds,
+      settings.filterType,
+      settings.selectedTag,
+      settings.mode,
+      userStatusMap,
+    ]
+  );
 
   // Clamp current index when filter changes
   useEffect(() => {
@@ -153,6 +199,64 @@ export const App: React.FC = () => {
 
   const currentQuestion: Question | undefined = filteredQuestions[currentIndex];
   const currentStatus: QuestionUserStatus | undefined = currentQuestion ? userStatusMap[currentQuestion.id] : undefined;
+
+  // 记住当前题号，刷新后原样恢复
+  useEffect(() => {
+    const id = currentQuestion?.id;
+    currentQuestionIdRef.current = id;
+    if (!id) return;
+    setSettings((prev) => (prev.lastQuestionId === id ? prev : { ...prev, lastQuestionId: id }));
+  }, [currentQuestion?.id]);
+
+  // 恢复上次的阅读位置（仅当还是同一道题时）
+  useLayoutEffect(() => {
+    const saved = loadLastScroll();
+    if (saved && saved.id === currentQuestion?.id && saved.top > 0 && mainRef.current) {
+      mainRef.current.scrollTop = saved.top;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 切题时回到题目顶部；首次进入不重置，避免覆盖刚恢复的位置
+  useLayoutEffect(() => {
+    const id = currentQuestion?.id ?? null;
+    if (id === null) return;
+    if (lastScrollQuestionRef.current === null) {
+      lastScrollQuestionRef.current = id;
+      return;
+    }
+    if (lastScrollQuestionRef.current !== id) {
+      lastScrollQuestionRef.current = id;
+      if (mainRef.current) mainRef.current.scrollTop = 0;
+    }
+  }, [currentQuestion?.id]);
+
+  const handleMainScroll = useCallback(() => {
+    if (scrollSaveTimer.current !== null) window.clearTimeout(scrollSaveTimer.current);
+    scrollSaveTimer.current = window.setTimeout(() => {
+      const id = currentQuestionIdRef.current;
+      if (!id) return;
+      saveLastScroll(id, mainRef.current?.scrollTop ?? 0);
+    }, 200);
+  }, []);
+
+  useEffect(() => {
+    const persist = () => {
+      const id = currentQuestionIdRef.current;
+      if (id) saveLastScroll(id, mainRef.current?.scrollTop ?? 0);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') persist();
+    };
+    window.addEventListener('pagehide', persist);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('pagehide', persist);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (scrollSaveTimer.current !== null) window.clearTimeout(scrollSaveTimer.current);
+    };
+  }, []);
+
 
   // 6. User Statistics Calculation
   const stats: UserStats = useMemo(() => {
@@ -670,6 +774,8 @@ export const App: React.FC = () => {
 
       {/* 4. Central Viewport (固定视口容器，绝不让外部跳动；内容卡片平滑横向滑动) */}
       <main
+        ref={mainRef}
+        onScroll={handleMainScroll}
         className="flex-1 overflow-y-auto px-2.5 sm:px-6 py-2 sm:py-4 flex flex-col justify-start pb-28 md:pb-8 no-scrollbar"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
