@@ -86,13 +86,14 @@ pnpm build
 
 ---
 
-## 🌐 Cloudflare Pages 线上公网部署
+## 🌐 Cloudflare Pages 线上部署
 
-本项目已成功部署至 Cloudflare 全球高速 CDN：
-- 生产线上访问地址：**https://mcu-quiz.pages.dev/**
-- 随时一键重新部署：
+- 生产访问地址：**https://dpj.bffcc.cn**（备用：https://mcu-quiz-6no.pages.dev）
+- **推送即部署**：推送到 `main` 后，由 GitHub Actions（`.github/workflows/deploy-pages.yml`）自动安装依赖、构建并发布到 Cloudflare Pages，无需手动操作；
+- 本地手动部署：
   ```bash
   pnpm deploy
   ```
+- 自动部署依赖仓库 Secret `CLOUDFLARE_API_TOKEN`（权限：Account → Cloudflare Pages → Edit）；
 - 自动享受全球 Anycast CDN 加速、免费 HTTPS 证书、离线 PWA 式快速缓存。
 
