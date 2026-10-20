@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>单片机与微机原理 · 极速刷题宝</title>
+  <meta name="description" content="基于 shadcn/ui 设计系统的单片机与微机原理极速刷题应用，涵盖单选、填空、判断、简答与程序题。">
+  <!-- Local Prism CSS for Offline Syntax Highlighting -->
+  <link rel="stylesheet" href="assets/prism-tomorrow.min.css">
+  <!-- shadcn/ui Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- App Shell Container (固定视口，零整体页面跳动) -->
+  <div class="app-container">
+
+    <!-- ================= 1. shadcn Navbar Header ================= -->
+    <header class="site-header">
+      <div class="header-container">
+        <!-- Brand -->
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+          </div>
+          <div class="brand-info">
+            <h1>微机与单片机 · 刷题宝</h1>
+            <p>320 题真题库 · 考点精解与 C51 源码</p>
+          </div>
+        </div>
+
+        <!-- Mode Switcher (shadcn Tabs) -->
+        <div class="tabs-list" role="tablist">
+          <button class="tab-trigger active" data-mode="recite" title="答案直接可见，按空格极速刷完">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+            <span>背题速记</span>
+          </button>
+          <button class="tab-trigger" data-mode="practice" title="独立做题、即时判分与错题归档">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+            <span>做题自测</span>
+          </button>
+          <button class="tab-trigger" data-mode="wrong" title="仅攻克历史做错题目">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg>
+            <span>错题</span> <span class="tab-badge" id="wrongBadge">0</span>
+          </button>
+          <button class="tab-trigger" data-mode="starred" title="查看重点标记题目">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            <span>收藏</span> <span class="tab-badge" id="starBadge">0</span>
+          </button>
+        </div>
+
+        <!-- Tool Actions -->
+        <div class="header-actions">
+          <button class="btn-icon" id="searchToggleBtn" title="搜索题目与考点 (⌘K / Ctrl+K)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          </button>
+          <button class="btn-icon" id="drawerToggleBtn" title="打开答题卡抽屉 (查看 320 题状态)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          </button>
+          <button class="btn-icon" id="themeBtn" title="切换主题 (浅色 / 极客深色 / 护眼绿)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          </button>
+          <button class="btn-icon" id="shortcutsHelpBtn" title="键盘快捷键指南">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2" ry="2"></rect><line x1="6" y1="8" x2="6" y2="8"></line><line x1="10" y1="8" x2="10" y2="8"></line><line x1="14" y1="8" x2="14" y2="8"></line><line x1="18" y1="8" x2="18" y2="8"></line><line x1="7" y1="16" x2="17" y2="16"></line></svg>
+          </button>
+          <button class="btn-icon" id="resetDataBtn" title="重置做题进度">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Sub-header Progress Bar -->
+    <div class="progress-subbar">
+      <div class="progress-container">
+        <div class="stats-group">
+          <div class="stats-item">
+            <span>已做:</span> <strong id="progressText">0 / 320 (0%)</strong>
+          </div>
+          <div class="stats-item">
+            <span>正确率:</span> <strong id="accuracyText" style="color: hsl(var(--success));">0%</strong>
+          </div>
+          <div class="stats-item">
+            <span>错题:</span> <strong id="mistakesCount" style="color: hsl(var(--danger));">0</strong>
+          </div>
+          <div class="stats-item">
+            <span>已收藏:</span> <strong id="starredCount" style="color: hsl(var(--warning));">0</strong>
+          </div>
+        </div>
+
+        <div class="progress-track">
+          <div class="progress-indicator" id="progressBarFill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <section class="filter-bar">
+      <div class="type-pills">
+        <button class="pill-btn active" data-type="all">全部 (320)</button>
+        <button class="pill-btn" data-type="choice">单选题 (100)</button>
+        <button class="pill-btn" data-type="blank">填空题 (70)</button>
+        <button class="pill-btn" data-type="judge">判断题 (100)</button>
+        <button class="pill-btn" data-type="qa">简答题 (30)</button>
+        <button class="pill-btn" data-type="code">程序综合 (20)</button>
+      </div>
+
+      <div class="tag-select-wrapper">
+        <select class="shadcn-select" id="tagSelect">
+          <option value="all">全部知识考点</option>
+        </select>
+
+        <button class="btn-shuffle" id="shuffleBtn" title="顺序/乱序刷题">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+          <span>顺序</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ================= 2. Main Content Viewport (固定内部视口) ================= -->
+    <main class="main-viewport" id="mainTouchArea">
+      <div class="content-wrapper">
+
+        <!-- Question Card -->
+        <div class="question-card" id="questionCard">
+          <!-- Card Meta Bar -->
+          <div class="card-meta-bar">
+            <div class="meta-info-left">
+              <span class="q-number-title" id="qNumber">第 1 / 320 题</span>
+              <span class="shadcn-badge" id="qTypeBadge">单选题</span>
+              <div id="qTagList" style="display: inline-flex; gap: 4px; flex-wrap: wrap;"></div>
+            </div>
+
+            <div>
+              <button class="btn-star" id="starBtn" title="收藏本题 (快捷键 S)">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                <span>收藏</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Question Stem (题干) -->
+          <div class="question-stem" id="qStem">正在加载题目内容...</div>
+
+          <!-- Interactive Area (Options / Inputs / Buttons) -->
+          <div id="qInteractiveArea"></div>
+
+          <!-- Answer & Analysis Area -->
+          <div id="analysisArea"></div>
+        </div>
+
+        <!-- Desktop Navigation Controls (桌面端专属) -->
+        <div class="desktop-nav-controls">
+          <button class="nav-btn" id="prevBtn" title="上一题 (快捷键 ← 或 J)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            <span>上一题</span>
+          </button>
+
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="auto-next-switch active" id="autoNextBtn" title="做对题目后是否自动跳入下一题">
+              <span class="dot-indicator"></span>
+              <span class="auto-next-label">自动跳题: 开启</span>
+            </div>
+            <button class="nav-btn" id="toggleAnalysisBtn" style="font-size: 0.85rem; height: 36px;">
+              查看/隐藏解析 (空格)
+            </button>
+            <button class="nav-btn" id="resetCurrentBtn" style="font-size: 0.85rem; height: 36px;" title="重做本题 (快捷键 R)">
+              重做本题
+            </button>
+          </div>
+
+          <button class="nav-btn primary" id="nextBtn" title="下一题 (快捷键 → 或 K 或 空格)">
+            <span>下一题</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+
+        <!-- Shortcut tips bar -->
+        <div class="shortcut-tips">
+          <span>⚡ 极速全键盘：</span>
+          <span><kbd>A</kbd><kbd>B</kbd><kbd>C</kbd><kbd>D</kbd> 选答案</span>
+          <span><kbd>T</kbd>/<kbd>F</kbd> 判断对错</span>
+          <span><kbd>空格</kbd> 答案解析/下一题</span>
+          <span><kbd>←</kbd> <kbd>→</kbd> 翻题</span>
+          <span><kbd>S</kbd> 收藏</span>
+          <span><kbd>⌘K</kbd> 搜题</span>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- ================= 3. Mobile Fixed Bottom Bar (手机端专属) ================= -->
+    <div class="mobile-bottom-bar">
+      <div class="mobile-bottom-content">
+        <button class="mob-btn" id="mobPrevBtn" title="上一题">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          <span>上一题</span>
+        </button>
+        <button class="mob-btn" id="mobAnalysisBtn" title="查看解析">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="9" y1="18" x2="15" y2="18"></line><line x1="10" y1="22" x2="14" y2="22"></line><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"></path></svg>
+          <span>看解析</span>
+        </button>
+        <button class="mob-btn" id="mobDrawerBtn" title="答题卡">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          <span>答题卡</span>
+        </button>
+        <button class="mob-btn" id="mobStarBtn" title="收藏">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          <span id="mobStarLabel">收藏</span>
+        </button>
+        <button class="mob-btn primary" id="mobNextBtn" title="下一题">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          <span>下一题</span>
+        </button>
+      </div>
+    </div>
+
+  </div> <!-- End App Shell -->
+
+  <!-- ================= 4. shadcn Sheet (答题卡抽屉) ================= -->
+  <div class="sheet-backdrop" id="drawerBackdrop">
+    <div class="sheet-panel">
+      <div class="sheet-header">
+        <h3>答题卡与快速定位</h3>
+        <button class="btn-icon" id="drawerCloseBtn" style="border: none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <div class="sheet-filter">
+        <button class="filter-chip active" data-filter="all">全部</button>
+        <button class="filter-chip" data-filter="correct">做对</button>
+        <button class="filter-chip" data-filter="wrong">做错</button>
+        <button class="filter-chip" data-filter="unanswered">未答</button>
+        <button class="filter-chip" data-filter="starred">已收藏</button>
+      </div>
+
+      <div class="sheet-body">
+        <div class="grid-matrix" id="gridMatrix"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 5. shadcn Command Palette (搜索弹窗) ================= -->
+  <div class="command-backdrop" id="searchModalBackdrop">
+    <div class="command-dialog">
+      <div class="command-input-wrapper">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: hsl(var(--muted-foreground));"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input type="text" class="command-input" id="searchInput" placeholder="搜索题目考点、关键词（如 8086、SCON、波特率）...">
+        <button class="btn-icon" id="searchCloseBtn" style="border: none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      <div class="command-list" id="searchResultsList"></div>
+    </div>
+  </div>
+
+  <!-- ================= Scripts ================= -->
+  <!-- 1. Question Bank Data -->
+  <script src="questions_data.js"></script>
+  <!-- 2. Local Prism Syntax Highlighter -->
+  <script src="assets/prism.min.js"></script>
+  <script src="assets/prism-c.min.js"></script>
+  <!-- 3. Application Controller -->
+  <script src="app.js"></script>
+</body>
+</html>
