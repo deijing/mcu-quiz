@@ -1,0 +1,59 @@
+name: Deploy to Cloudflare Pages
+
+# 推送到 main 后自动构建并发布到 Cloudflare Pages 项目 mcu-quiz
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Check Cloudflare token
+        id: token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN 未配置，跳过部署。请在仓库 Settings → Secrets and variables → Actions 中添加。"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        if: steps.token.outputs.skip != 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          # 在仓库 Settings → Secrets and variables → Actions 中配置
+          # 需要 Account → Cloudflare Pages → Edit 权限
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: 3e309f1aa2ea52f17e307a7357e8f6e7
+          command: pages deploy dist --project-name=mcu-quiz --branch=main
