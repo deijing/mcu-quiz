@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { XCircle, Star } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { allQuestions, allTags } from './data/questions';
 import { 
@@ -34,6 +35,8 @@ import { CommandSearchDialog } from './components/CommandSearchDialog';
 import { ShortcutsDialog } from './components/ShortcutsDialog';
 import { ResetProgressDialog } from './components/ResetProgressDialog';
 import { AiSettingsDialog } from './components/AiSettingsDialog';
+import { MobileFilterSheet } from './components/MobileFilterSheet';
+import { MobileMoreSheet } from './components/MobileMoreSheet';
 
 // AI 解析面板按需加载，避免把 Markdown 渲染库打进首屏包
 const AiExplanationPanel = lazy(() =>
@@ -59,6 +62,8 @@ export const App: React.FC = () => {
   const [aiConfig, setAiConfig] = useState<AiConfig>(() => loadAiConfig());
   const [aiCache, setAiCache] = useState<AiCache>(() => loadAiCache());
   const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState<Question | null>(null);
 
   // 4. Stable Shuffled Order
@@ -460,6 +465,12 @@ export const App: React.FC = () => {
     setAiCache({});
   }, []);
 
+  // 手机端筛选抽屉：一键重置
+  const handleResetFilters = useCallback(() => {
+    setSettings((prev) => ({ ...prev, filterType: 'all', selectedTag: 'all', isShuffled: false }));
+    playSound('click', settings.soundEnabled);
+  }, [settings.soundEnabled]);
+
   // Cycle Theme
   const handleThemeCycle = useCallback(() => {
     const nextTheme: 'light' | 'dark' | 'green' =
@@ -489,11 +500,13 @@ export const App: React.FC = () => {
         setIsResetOpen(false);
         setIsAiSettingsOpen(false);
         setAiQuestion(null);
+        setIsFilterOpen(false);
+        setIsMoreOpen(false);
         return;
       }
 
       // 确认弹窗、AI 弹窗打开时，屏蔽其他快捷键，避免误操作
-      if (isResetOpen || isAiSettingsOpen || aiQuestion) return;
+      if (isResetOpen || isAiSettingsOpen || aiQuestion || isFilterOpen || isMoreOpen) return;
 
       // Cmd+K / Ctrl+K
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -567,6 +580,8 @@ export const App: React.FC = () => {
     isResetOpen,
     isAiSettingsOpen,
     aiQuestion,
+    isFilterOpen,
+    isMoreOpen,
     settings.mode,
     currentQuestion,
     currentStatus,
@@ -628,34 +643,57 @@ export const App: React.FC = () => {
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onResetProgress={handleResetAllProgress}
         onOpenAiSettings={() => setIsAiSettingsOpen(true)}
+        onOpenFilter={() => setIsFilterOpen(true)}
+        onOpenMore={() => setIsMoreOpen(true)}
+        filterActive={
+          settings.filterType !== 'all' || settings.selectedTag !== 'all' || settings.isShuffled
+        }
       />
 
       {/* 2. Progress Tracker Sub-bar */}
       <ProgressBar stats={stats} totalQuestions={allQuestions.length} />
 
-      {/* 3. Question Filter Pill Bar */}
-      <FilterBar
-        filterType={settings.filterType}
-        onFilterTypeChange={(ft) => setSettings((prev) => ({ ...prev, filterType: ft }))}
-        selectedTag={settings.selectedTag}
-        onTagChange={(st) => setSettings((prev) => ({ ...prev, selectedTag: st }))}
-        allTags={allTags}
-        isShuffled={settings.isShuffled}
-        onShuffleToggle={() =>
-          setSettings((prev) => ({ ...prev, isShuffled: !prev.isShuffled }))
-        }
-      />
+      {/* 3. Question Filter Pill Bar (桌面端；手机端收进筛选抽屉) */}
+      <div className="hidden md:block">
+        <FilterBar
+          filterType={settings.filterType}
+          onFilterTypeChange={(ft) => setSettings((prev) => ({ ...prev, filterType: ft }))}
+          selectedTag={settings.selectedTag}
+          onTagChange={(st) => setSettings((prev) => ({ ...prev, selectedTag: st }))}
+          allTags={allTags}
+          isShuffled={settings.isShuffled}
+          onShuffleToggle={() =>
+            setSettings((prev) => ({ ...prev, isShuffled: !prev.isShuffled }))
+          }
+        />
+      </div>
 
       {/* 4. Central Viewport (固定视口容器，绝不让外部跳动；内容卡片平滑横向滑动) */}
       <main
-        className="flex-1 overflow-y-auto px-2.5 sm:px-6 py-2.5 sm:py-4 flex flex-col justify-start pb-28 md:pb-8 no-scrollbar"
+        className="flex-1 overflow-y-auto px-2.5 sm:px-6 py-2 sm:py-4 flex flex-col justify-start pb-28 md:pb-8 no-scrollbar"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Mobile Swipe Hint */}
-        <div className="flex md:hidden items-center justify-center gap-1.5 text-[11px] text-muted-foreground/60 mb-2 select-none">
-          <span>👈 左右滑动屏幕极速切题 👉</span>
-        </div>
+        {/* Mobile: 当前专项模式提示（错题本 / 收藏夹） */}
+        {(settings.mode === 'wrong' || settings.mode === 'starred') && (
+          <div className="md:hidden mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+              {settings.mode === 'wrong' ? (
+                <XCircle className="h-4 w-4 text-rose-500" />
+              ) : (
+                <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
+              )}
+              {settings.mode === 'wrong' ? '错题本' : '收藏夹'}
+              <span className="font-normal text-muted-foreground">· {filteredQuestions.length} 题</span>
+            </span>
+            <button
+              onClick={() => setSettings((prev) => ({ ...prev, mode: 'practice' }))}
+              className="text-[11px] font-medium text-primary active:opacity-70"
+            >
+              退出
+            </button>
+          </div>
+        )}
 
         {currentQuestion ? (
           <QuestionCard
@@ -787,6 +825,46 @@ export const App: React.FC = () => {
           />
         </Suspense>
       )}
+
+      {/* Mobile Filter Sheet */}
+      <MobileFilterSheet
+        isOpen={isFilterOpen}
+        onClose={() => setIsFilterOpen(false)}
+        filterType={settings.filterType}
+        onFilterTypeChange={(ft) => setSettings((prev) => ({ ...prev, filterType: ft }))}
+        selectedTag={settings.selectedTag}
+        onTagChange={(st) => setSettings((prev) => ({ ...prev, selectedTag: st }))}
+        allTags={allTags}
+        isShuffled={settings.isShuffled}
+        onShuffleToggle={() =>
+          setSettings((prev) => ({ ...prev, isShuffled: !prev.isShuffled }))
+        }
+        resultCount={filteredQuestions.length}
+        totalCount={allQuestions.length}
+        scopeLabel={
+          settings.mode === 'wrong' ? '错题本' : settings.mode === 'starred' ? '收藏夹' : undefined
+        }
+        onReset={handleResetFilters}
+      />
+
+      {/* Mobile More Sheet */}
+      <MobileMoreSheet
+        isOpen={isMoreOpen}
+        onClose={() => setIsMoreOpen(false)}
+        mode={settings.mode}
+        onModeChange={(m) => setSettings((prev) => ({ ...prev, mode: m }))}
+        wrongCount={stats.wrongCount}
+        starredCount={stats.starredCount}
+        theme={settings.theme}
+        onThemeChange={(t) => setSettings((prev) => ({ ...prev, theme: t }))}
+        soundEnabled={settings.soundEnabled}
+        onSoundToggle={() => setSettings((prev) => ({ ...prev, soundEnabled: !prev.soundEnabled }))}
+        autoAdvance={settings.autoAdvance}
+        onAutoAdvanceToggle={() => setSettings((prev) => ({ ...prev, autoAdvance: !prev.autoAdvance }))}
+        onOpenAiSettings={() => setIsAiSettingsOpen(true)}
+        onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        onResetProgress={handleResetAllProgress}
+      />
 
       {/* 12. AI Settings Dialog */}
       <AiSettingsDialog

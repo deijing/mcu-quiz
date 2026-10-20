@@ -10,7 +10,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ stats, totalQuestions 
   const percent = totalQuestions > 0 ? Math.round((stats.totalAnswered / totalQuestions) * 100) : 0;
 
   return (
-    <div className="w-full bg-muted/30 border-b px-3 sm:px-6 py-1.5 shrink-0 select-none">
+    <div className="w-full bg-muted/30 border-b px-3 sm:px-6 py-1 sm:py-1.5 shrink-0 select-none">
       <div className="max-w-4xl mx-auto flex flex-col gap-1">
         {/* Desktop stats row */}
         <div className="hidden sm:flex items-center justify-between text-xs text-muted-foreground">
@@ -35,27 +35,25 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ stats, totalQuestions 
         </div>
 
         {/* Mobile stats row (Ultra-compact 1-line) */}
-        <div className="flex sm:hidden items-center justify-between text-[11px] text-muted-foreground font-medium">
-          <div className="flex items-center gap-2.5">
+        <div className="flex sm:hidden items-center justify-between text-[10.5px] text-muted-foreground font-medium">
+          <div className="flex items-center gap-3">
             <span>
-              进度 <strong className="text-foreground">{stats.totalAnswered}</strong>/{totalQuestions}
+              已做 <strong className="text-foreground">{stats.totalAnswered}</strong>/{totalQuestions}
             </span>
             <span>
               正确率 <strong className="text-emerald-600 dark:text-emerald-400">{stats.accuracy}%</strong>
             </span>
             {stats.wrongCount > 0 && (
-              <span>
-                错题 <strong className="text-rose-600 dark:text-rose-400">{stats.wrongCount}</strong>
-              </span>
+              <span className="text-rose-600 dark:text-rose-400">错题 {stats.wrongCount}</span>
+            )}
+            {stats.starredCount > 0 && (
+              <span className="text-amber-500">收藏 {stats.starredCount}</span>
             )}
           </div>
-          <span className="text-[10px] text-muted-foreground/70 font-mono">
-            {percent}%
-          </span>
         </div>
 
         {/* Hairline Track */}
-        <div className="h-1 w-full rounded-full bg-secondary overflow-hidden">
+        <div className="h-0.5 sm:h-1 w-full rounded-full bg-secondary overflow-hidden">
           <div
             className="h-full bg-primary transition-all duration-300 ease-out rounded-full"
             style={{ width: `${percent}%` }}

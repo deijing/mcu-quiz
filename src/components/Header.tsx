@@ -14,6 +14,8 @@ import {
   Keyboard, 
   RotateCcw,
   Sparkles,
+  SlidersHorizontal,
+  MoreHorizontal,
   Leaf
 } from 'lucide-react';
 import { Button } from './ui/button';
@@ -34,6 +36,9 @@ interface HeaderProps {
   onOpenShortcuts: () => void;
   onResetProgress: () => void;
   onOpenAiSettings: () => void;
+  onOpenFilter: () => void;
+  onOpenMore: () => void;
+  filterActive: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -50,6 +55,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenShortcuts,
   onResetProgress,
   onOpenAiSettings,
+  onOpenFilter,
+  onOpenMore,
+  filterActive,
 }) => {
   return (
     <header className="sticky top-0 z-40 h-12 md:h-14 w-full border-b bg-background/95 backdrop-blur-md px-3 sm:px-6 flex items-center justify-between shrink-0 select-none">
@@ -61,7 +69,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex flex-col">
           <div className="flex items-center gap-1">
             <span className="font-bold text-xs sm:text-sm tracking-tight text-foreground whitespace-nowrap">
-              <span className="sm:hidden">刷题宝</span>
+              <span className="sm:hidden hidden min-[360px]:inline">刷题宝</span>
               <span className="hidden sm:inline">单片机刷题宝</span>
             </span>
             <span className="text-[10px] bg-primary/10 text-primary px-1 rounded font-semibold hidden lg:inline-block">
@@ -135,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center rounded-lg bg-muted p-0.5 border border-border/50 text-xs">
           <button
             onClick={() => onModeChange('recite')}
-            className={`flex items-center gap-1 px-2 py-1 rounded-md font-medium whitespace-nowrap transition-all ${
+            className={`flex items-center gap-1 h-9 px-2 rounded-md font-medium whitespace-nowrap transition-all ${
               mode === 'recite'
                 ? 'bg-background text-foreground shadow-xs font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
@@ -146,7 +154,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
           <button
             onClick={() => onModeChange('practice')}
-            className={`flex items-center gap-1 px-2 py-1 rounded-md font-medium whitespace-nowrap transition-all ${
+            className={`flex items-center gap-1 h-9 px-2 rounded-md font-medium whitespace-nowrap transition-all ${
               mode === 'practice'
                 ? 'bg-background text-foreground shadow-xs font-semibold'
                 : 'text-muted-foreground hover:text-foreground'
@@ -158,8 +166,8 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Action Tools */}
-      <div className="flex items-center gap-0.5 sm:gap-1.5">
+      {/* Action Tools (Desktop) */}
+      <div className="hidden md:flex items-center gap-0.5 sm:gap-1.5">
         <Button
           variant="ghost"
           size="icon"
@@ -239,6 +247,42 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <RotateCcw className="h-3.5 w-3.5" />
           <span className="hidden lg:inline text-xs font-medium">重新做题</span>
+        </Button>
+      </div>
+
+      {/* Action Tools (Mobile) */}
+      <div className="flex md:hidden items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onOpenFilter}
+          title="筛选题目"
+          className="relative h-10 w-10 text-muted-foreground hover:text-foreground active:scale-95"
+        >
+          <SlidersHorizontal className="h-5 w-5" />
+          {filterActive && (
+            <span className="absolute top-2 right-2 h-1.5 w-1.5 rounded-full bg-primary" />
+          )}
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onOpenSearch}
+          title="搜索题目"
+          className="h-10 w-10 text-muted-foreground hover:text-foreground active:scale-95"
+        >
+          <Search className="h-5 w-5" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onOpenMore}
+          title="更多设置"
+          className="h-10 w-10 text-muted-foreground hover:text-foreground active:scale-95"
+        >
+          <MoreHorizontal className="h-5 w-5" />
         </Button>
       </div>
     </header>
