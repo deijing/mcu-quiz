@@ -16,8 +16,6 @@ import {
 import { Question, QuestionUserStatus, StudyMode } from '../types/question';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-c';
 
 interface QuestionCardProps {
   question: Question;
@@ -64,10 +62,23 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
     }
   }, [question, userStatus]);
 
-  // Syntax highlight after render
+  // 仅程序题需要语法高亮：按需加载 Prism，避免拖慢首屏
   useEffect(() => {
-    Prism.highlightAll();
-  }, [question, userStatus?.revealed, mode]);
+    if (question.type !== 'code') return;
+    let cancelled = false;
+
+    Promise.all([import('prismjs'), import('prismjs/components/prism-c')])
+      .then(([mod]) => {
+        if (!cancelled) mod.default.highlightAll();
+      })
+      .catch(() => {
+        // 高亮失败不影响阅读
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [question.id, question.type, question.answer, userStatus?.revealed, mode]);
 
   const isStarred = !!userStatus?.starred;
   const isAnswered = !!userStatus?.answered;
