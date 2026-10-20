@@ -116,6 +116,16 @@ pnpm build
 
 ---
 
+## ⚡ 性能与加载策略
+
+- **首屏骨架**：HTML 内联骨架与全部 CSS，HTML 到达即绘制；主题在 `<head>` 提前应用，深色模式不再闪白。
+- **按需加载**：程序题语法高亮（Prism）与 AI 解析面板独立分包，只在用到时下载；主包 gzip 约 123KB（含全部 320 题题库）。
+- **强缓存 + Service Worker**：`/assets/*` 一年 `immutable`；首次访问后 Service Worker 缓存静态资源，二次访问基本秒开，断网也能打开。
+- **实测（Lighthouse 移动端模拟 4G）**：FCP 0.9s、LCP 1.7s、TBT 0ms、CLS 0。
+- **国内访问**：Cloudflare Pages 边缘节点在境外，大陆直连通常有 200–600ms 的 RTT。若用户主要在大陆且追求更低延迟，可在完成 ICP 备案后接入国内 CDN（阿里云 / 腾讯云 EdgeOne），或使用 Cloudflare China Network；本站无需改代码。
+
+---
+
 ## 🌐 Cloudflare Pages 线上部署
 
 - 生产访问地址：**https://dpj.bffcc.cn**（备用：https://mcu-quiz-6no.pages.dev）
