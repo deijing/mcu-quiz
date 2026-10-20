@@ -83,7 +83,26 @@ export function loadAiConfig(): AiConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_AI_CONFIG);
     if (!raw) return DEFAULT_AI_CONFIG;
-    return { ...DEFAULT_AI_CONFIG, ...JSON.parse(raw) };
+
+    const parsed = JSON.parse(raw) as Partial<AiConfig> & { provider?: string };
+
+    // 只保留 DeepSeek：旧版本的 OpenAI / Claude / 其它服务商地址回落到 DeepSeek 官方，
+    // 但保留用户自己填写的中转地址。
+    const legacyProvider =
+      /api\.openai\.com|api\.anthropic\.com|api\.moonshot\.cn|open\.bigmodel\.cn|dashscope\.aliyuncs\.com|api\.siliconflow\.cn|localhost|127\.0\.0\.1/i;
+
+    const baseUrl =
+      typeof parsed.baseUrl === 'string' &&
+      /^https?:\/\//i.test(parsed.baseUrl) &&
+      !legacyProvider.test(parsed.baseUrl)
+        ? parsed.baseUrl
+        : DEFAULT_AI_CONFIG.baseUrl;
+
+    return {
+      baseUrl,
+      apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
+      model: parsed.model === 'deepseek-reasoner' ? 'deepseek-reasoner' : 'deepseek-chat',
+    };
   } catch {
     return DEFAULT_AI_CONFIG;
   }

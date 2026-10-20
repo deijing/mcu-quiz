@@ -1,11 +1,7 @@
 import { Question } from '../types/question';
 
-/** 目前支持两种主流协议：OpenAI Chat Completions 与 Anthropic Messages */
-export type AiProvider = 'openai' | 'anthropic';
-
 export interface AiConfig {
-  provider: AiProvider;
-  /** 例如 https://api.openai.com/v1 或 https://api.anthropic.com/v1 */
+  /** DeepSeek 兼容地址，默认 https://api.deepseek.com/v1 */
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -14,105 +10,27 @@ export interface AiConfig {
 export interface AiCacheEntry {
   text: string;
   model: string;
-  provider: AiProvider;
   updatedAt: number;
 }
 
 export type AiCache = Record<string, AiCacheEntry>;
 
-export interface AiPreset {
-  id: string;
-  label: string;
-  provider: AiProvider;
-  baseUrl: string;
-  model: string;
-  hint?: string;
-}
+export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1';
 
-export const AI_PRESETS: AiPreset[] = [
-  {
-    id: 'openai',
-    label: 'OpenAI',
-    provider: 'openai',
-    baseUrl: 'https://api.openai.com/v1',
-    model: 'gpt-4o-mini',
-    hint: '官方或兼容中转地址',
-  },
-  {
-    id: 'deepseek',
-    label: 'DeepSeek',
-    provider: 'openai',
-    baseUrl: 'https://api.deepseek.com/v1',
-    model: 'deepseek-chat',
-    hint: '国内直连，性价比高',
-  },
-  {
-    id: 'moonshot',
-    label: 'Kimi',
-    provider: 'openai',
-    baseUrl: 'https://api.moonshot.cn/v1',
-    model: 'moonshot-v1-32k',
-  },
-  {
-    id: 'zhipu',
-    label: '智谱 GLM',
-    provider: 'openai',
-    baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
-    model: 'glm-4-flash',
-  },
-  {
-    id: 'dashscope',
-    label: '通义千问',
-    provider: 'openai',
-    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    model: 'qwen-plus',
-  },
-  {
-    id: 'siliconflow',
-    label: '硅基流动',
-    provider: 'openai',
-    baseUrl: 'https://api.siliconflow.cn/v1',
-    model: 'deepseek-ai/DeepSeek-V3',
-  },
-  {
-    id: 'ollama',
-    label: 'Ollama 本地',
-    provider: 'openai',
-    baseUrl: 'http://localhost:11434/v1',
-    model: 'qwen2.5:7b',
-    hint: '本地模型免 Key，需允许跨域',
-  },
-  {
-    id: 'anthropic',
-    label: 'Claude',
-    provider: 'anthropic',
-    baseUrl: 'https://api.anthropic.com/v1',
-    model: 'claude-sonnet-4-5',
-  },
+export const DEEPSEEK_MODELS: { value: string; label: string; hint: string }[] = [
+  { value: 'deepseek-chat', label: 'deepseek-chat', hint: '响应快，适合日常刷题' },
+  { value: 'deepseek-reasoner', label: 'deepseek-reasoner', hint: '推理更强，速度稍慢' },
 ];
 
 export const DEFAULT_AI_CONFIG: AiConfig = {
-  provider: 'openai',
-  baseUrl: 'https://api.openai.com/v1',
+  baseUrl: DEEPSEEK_BASE_URL,
   apiKey: '',
-  model: 'gpt-4o-mini',
+  model: 'deepseek-chat',
 };
 
-export function matchPreset(config: AiConfig): AiPreset | undefined {
-  return AI_PRESETS.find(
-    (p) =>
-      p.provider === config.provider &&
-      p.baseUrl.replace(/\/+$/, '') === config.baseUrl.trim().replace(/\/+$/, '') &&
-      p.model === config.model.trim()
-  );
-}
-
-/** 将用户填写的 Base URL 规范化为真正的请求地址 */
+/** 将 Base URL 规范化为 DeepSeek 的 Chat Completions 地址 */
 export function resolveEndpoint(config: AiConfig): string {
   const base = config.baseUrl.trim().replace(/\/+$/, '');
-  if (config.provider === 'anthropic') {
-    return /\/messages$/.test(base) ? base : `${base}/messages`;
-  }
   return /\/chat\/completions$/.test(base) ? base : `${base}/chat/completions`;
 }
 
@@ -227,23 +145,17 @@ async function readErrorBody(response: Response): Promise<string> {
 }
 
 function messageForStatus(status: number, detail: string): string {
+  if (status === 400) return detail || '请求参数有误，请检查模型名';
   if (status === 401 || status === 403) return 'API Key 无效或没有该模型的权限';
+  if (status === 402) return 'DeepSeek 账户余额不足，请先充值';
   if (status === 404) return '接口地址或模型不存在，请检查 Base URL 与模型名';
+  if (status === 422) return detail || '请求参数不合法';
   if (status === 429) return '请求过于频繁或额度不足，请稍后再试';
-  if (status >= 500) return '服务方暂时不可用，请稍后重试';
+  if (status >= 500) return 'DeepSeek 服务暂时不可用，请稍后重试';
   return detail || `请求失败（HTTP ${status}）`;
 }
 
 function headersFor(config: AiConfig): Record<string, string> {
-  if (config.provider === 'anthropic') {
-    return {
-      'Content-Type': 'application/json',
-      'x-api-key': config.apiKey.trim(),
-      'anthropic-version': '2023-06-01',
-      // 允许浏览器直接调用 Anthropic API（官方要求的显式开关）
-      'anthropic-dangerous-direct-browser-access': 'true',
-    };
-  }
   return {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${config.apiKey.trim()}`,
@@ -251,21 +163,14 @@ function headersFor(config: AiConfig): Record<string, string> {
 }
 
 function bodyFor(config: AiConfig, system: string | undefined, user: string, stream: boolean, maxTokens = 1600) {
-  if (config.provider === 'anthropic') {
-    return {
-      model: config.model.trim(),
-      max_tokens: maxTokens,
-      temperature: 0.4,
-      stream,
-      ...(system ? { system } : {}),
-      messages: [{ role: 'user', content: user }],
-    };
-  }
+  // deepseek-reasoner 不支持 temperature 等采样参数，直接不传
+  const isReasoner = config.model.trim().includes('reasoner');
+
   return {
     model: config.model.trim(),
-    temperature: 0.4,
     max_tokens: maxTokens,
     stream,
+    ...(isReasoner ? {} : { temperature: 0.4 }),
     messages: [
       ...(system ? [{ role: 'system', content: system }] : []),
       { role: 'user', content: user },
@@ -273,7 +178,7 @@ function bodyFor(config: AiConfig, system: string | undefined, user: string, str
   };
 }
 
-/** 调用外部 API，流式返回解析文本 */
+/** 调用 DeepSeek API，流式返回解析文本 */
 export async function streamAiExplanation(
   config: AiConfig,
   question: Question,
@@ -292,9 +197,7 @@ export async function streamAiExplanation(
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: headersFor(config),
-      body: JSON.stringify(
-        bodyFor(config, SYSTEM_PROMPT, buildUserPrompt(question), true)
-      ),
+      body: JSON.stringify(bodyFor(config, SYSTEM_PROMPT, buildUserPrompt(question), true)),
       signal: controller.signal,
     });
 
@@ -307,74 +210,40 @@ export async function streamAiExplanation(
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
       const json: any = await response.json();
-      const full: string =
-        config.provider === 'anthropic'
-          ? (json?.content || []).map((part: any) => part?.text || '').join('')
-          : json?.choices?.[0]?.message?.content || '';
+      const full: string = json?.choices?.[0]?.message?.content || '';
       if (full.trim()) {
         onDelta(full);
         return full;
       }
-      throw new AiError('接口未返回可读内容，请确认模型支持对话补全');
+      throw new AiError('接口未返回可读内容，请确认模型是否支持对话补全');
     }
 
-    if (config.provider === 'anthropic') {
-      await consumeSse(
-        response,
-        (lines) => {
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data:')) continue;
-            const payload = trimmed.slice(5).trim();
-            if (!payload) continue;
-            let json: any;
-            try {
-              json = JSON.parse(payload);
-            } catch {
-              continue;
-            }
-            if (json.type === 'error') {
-              throw new AiError(json.error?.message || '生成失败');
-            }
-            if (json.type === 'content_block_delta' && json.delta?.type === 'text_delta') {
-              const delta: string = json.delta.text || '';
-              if (delta) {
-                text += delta;
-                onDelta(delta);
-              }
-            }
+    await consumeSse(
+      response,
+      (lines) => {
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const payload = trimmed.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          let json: any;
+          try {
+            json = JSON.parse(payload);
+          } catch {
+            continue;
           }
-        },
-        controller.signal
-      );
-    } else {
-      await consumeSse(
-        response,
-        (lines) => {
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data:')) continue;
-            const payload = trimmed.slice(5).trim();
-            if (!payload || payload === '[DONE]') continue;
-            let json: any;
-            try {
-              json = JSON.parse(payload);
-            } catch {
-              continue;
-            }
-            if (json.error) {
-              throw new AiError(json.error?.message || '生成失败');
-            }
-            const delta: string = json.choices?.[0]?.delta?.content || '';
-            if (delta) {
-              text += delta;
-              onDelta(delta);
-            }
+          if (json.error) {
+            throw new AiError(json.error?.message || '生成失败');
           }
-        },
-        controller.signal
-      );
-    }
+          const delta: string = json.choices?.[0]?.delta?.content || '';
+          if (delta) {
+            text += delta;
+            onDelta(delta);
+          }
+        }
+      },
+      controller.signal
+    );
 
     if (!text.trim()) {
       throw new AiError('接口返回了空内容，请检查模型是否支持对话补全');
@@ -384,11 +253,11 @@ export async function streamAiExplanation(
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
       if (signal?.aborted) throw err;
-      throw new AiError('请求超时（120 秒），请检查网络或换一个模型');
+      throw new AiError('请求超时（120 秒），请检查网络或换 deepseek-chat 试试');
     }
     if (err instanceof TypeError) {
       throw new AiError(
-        '网络请求失败：可能是 Base URL 不可达、CORS 跨域限制，或该服务不允许浏览器直接调用',
+        '网络请求失败：可能是网络不通或浏览器跨域被拦截，请检查 Base URL',
         undefined,
         err.message
       );
@@ -410,9 +279,7 @@ export async function testAiConnection(config: AiConfig): Promise<string> {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: headersFor(config),
-      body: JSON.stringify(
-        bodyFor(config, undefined, '请只回复四个字：连接成功', false, 32)
-      ),
+      body: JSON.stringify(bodyFor(config, undefined, '请只回复四个字：连接成功', false, 32)),
       signal: controller.signal,
     });
 
@@ -422,23 +289,16 @@ export async function testAiConnection(config: AiConfig): Promise<string> {
     }
 
     const json: any = await response.json();
-    const reply: string =
-      config.provider === 'anthropic'
-        ? json?.content?.map((c: any) => c?.text || '').join('') || ''
-        : json?.choices?.[0]?.message?.content || '';
+    const reply: string = json?.choices?.[0]?.message?.content || '';
 
     if (!reply.trim()) throw new AiError('接口有响应但内容为空，请检查模型名');
     return reply.trim().slice(0, 60);
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new AiError('测试超时（20 秒），请检查地址是否可达');
+      throw new AiError('测试超时（20 秒），请检查网络或 Base URL');
     }
     if (err instanceof TypeError) {
-      throw new AiError(
-        '网络请求失败：可能是地址不可达或 CORS 跨域限制（Anthropic 需要允许浏览器直连）',
-        undefined,
-        err.message
-      );
+      throw new AiError('网络请求失败：请检查网络、Base URL 或浏览器跨域限制', undefined, err.message);
     }
     throw err;
   } finally {

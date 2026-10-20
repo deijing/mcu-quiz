@@ -82,7 +82,6 @@ export const AiExplanationPanel: React.FC<AiExplanationPanelProps> = ({
       onSaved(question.id, {
         text: full,
         model: config.model,
-        provider: config.provider,
         updatedAt: Date.now(),
       });
     } catch (err) {
@@ -221,8 +220,7 @@ export const AiExplanationPanel: React.FC<AiExplanationPanelProps> = ({
               </div>
               <p className="text-xs leading-relaxed text-foreground/85">{error}</p>
               <p className="text-[10.5px] leading-relaxed text-muted-foreground">
-                排查：API Key 是否有效 · Base URL 是否填到 /v1 · 模型名是否存在 ·
-                服务商是否允许浏览器跨域调用。
+                排查：API Key 是否有效或余额不足 · Base URL 是否正确 · 模型名是否存在 · 网络能否访问 DeepSeek。
               </p>
               <div className="flex gap-2 pt-1">
                 <Button size="xs" onClick={() => void run()} className="gap-1">
@@ -269,7 +267,7 @@ export const AiExplanationPanel: React.FC<AiExplanationPanelProps> = ({
         {/* Footer */}
         <div className="border-t px-3 sm:px-4 py-2.5 flex items-center justify-between gap-2 shrink-0 pb-safe bg-muted/20">
           <span className="hidden sm:block text-[10.5px] text-muted-foreground truncate">
-            {config.provider === 'anthropic' ? 'Claude' : 'OpenAI 兼容'} · {config.model}
+            DeepSeek · {config.model}
           </span>
 
           <div className="flex items-center gap-1.5 ml-auto">

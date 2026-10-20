@@ -13,9 +13,10 @@ import {
   Trash2,
   ShieldCheck,
   PlugZap,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from './ui/button';
-import { AI_PRESETS, AiConfig, matchPreset, testAiConnection } from '../lib/ai';
+import { AiConfig, DEEPSEEK_MODELS, testAiConnection } from '../lib/ai';
 import { cn } from '../lib/utils';
 
 interface AiSettingsDialogProps {
@@ -53,45 +54,17 @@ export const AiSettingsDialog: React.FC<AiSettingsDialogProps> = ({
 
   if (!isOpen) return null;
 
-  const activePreset = matchPreset(draft);
-
   const validate = (): string => {
     if (!/^https?:\/\//i.test(draft.baseUrl.trim())) return '请填写以 http(s):// 开头的 Base URL';
-    if (!draft.model.trim()) return '请填写模型名称';
+    if (!draft.model.trim()) return '请选择模型';
     return '';
   };
 
   const normalized = (): AiConfig => ({
-    provider: draft.provider,
     baseUrl: draft.baseUrl.trim().replace(/\/+$/, ''),
     apiKey: draft.apiKey.trim(),
     model: draft.model.trim(),
   });
-
-  const handlePreset = (id: string) => {
-    const preset = AI_PRESETS.find((p) => p.id === id);
-    if (!preset) return;
-    setDraft((prev) => ({
-      ...prev,
-      provider: preset.provider,
-      baseUrl: preset.baseUrl,
-      model: preset.model,
-    }));
-    setTestState({ status: 'idle' });
-    setFormError('');
-  };
-
-  const handleProvider = (provider: AiConfig['provider']) => {
-    const preset = AI_PRESETS.find((p) => p.provider === provider);
-    setDraft((prev) => ({
-      ...prev,
-      provider,
-      baseUrl: preset?.baseUrl ?? prev.baseUrl,
-      model: preset?.model ?? prev.model,
-    }));
-    setTestState({ status: 'idle' });
-    setFormError('');
-  };
 
   const handleTest = async () => {
     const error = validate();
@@ -146,7 +119,7 @@ export const AiSettingsDialog: React.FC<AiSettingsDialogProps> = ({
                 AI 解析设置
               </h3>
               <p className="text-[11px] text-muted-foreground mt-0.5">
-                接入你自己的大模型 API，生成逐题深度解析
+                使用 DeepSeek API 生成逐题深度解析
               </p>
             </div>
           </div>
@@ -161,64 +134,12 @@ export const AiSettingsDialog: React.FC<AiSettingsDialogProps> = ({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
-          {/* Presets */}
-          <section className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <label className="text-[11px] font-semibold text-muted-foreground">快速选择服务商</label>
-              {!activePreset && (
-                <span className="text-[10px] font-medium text-primary bg-primary/10 px-1.5 py-0.5 rounded">
-                  当前：自定义地址
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-              {AI_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  onClick={() => handlePreset(preset.id)}
-                  title={preset.hint}
-                  className={cn(
-                    'h-8 rounded-lg border text-[11px] font-medium transition-all active:scale-95 truncate px-1.5',
-                    activePreset?.id === preset.id
-                      ? 'border-primary bg-primary text-primary-foreground shadow-xs'
-                      : 'border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted/60'
-                  )}
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10.5px] leading-relaxed text-muted-foreground">
-              选择预设后仍可手动修改下方任意字段；直接编辑即视为自定义地址。
-            </p>
-          </section>
-
-          {/* Protocol */}
-          <section className="space-y-1.5">
-            <label className="text-[11px] font-semibold text-muted-foreground">接口格式</label>
-            <div className="grid grid-cols-2 gap-1.5 p-0.5 rounded-lg bg-muted border border-border/60">
-              {(
-                [
-                  { value: 'openai', label: 'OpenAI 兼容', hint: '/chat/completions' },
-                  { value: 'anthropic', label: 'Claude 格式', hint: '/messages' },
-                ] as const
-              ).map((item) => (
-                <button
-                  key={item.value}
-                  onClick={() => handleProvider(item.value)}
-                  className={cn(
-                    'py-1.5 rounded-md text-[11px] sm:text-xs font-medium transition-all',
-                    draft.provider === item.value
-                      ? 'bg-background text-foreground shadow-xs font-semibold'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {item.label}
-                  <span className="ml-1 text-[10px] font-normal opacity-60 hidden sm:inline">{item.hint}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+          <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+            <span className="text-[11px] font-semibold text-primary">DeepSeek</span>
+            <span className="text-[10.5px] text-muted-foreground">
+              OpenAI 兼容接口 · 浏览器直连官方 API
+            </span>
+          </div>
 
           {/* Base URL */}
           <section className="space-y-1.5">
@@ -236,16 +157,26 @@ export const AiSettingsDialog: React.FC<AiSettingsDialogProps> = ({
               className={inputClass}
             />
             <p className="text-[10.5px] text-muted-foreground/80">
-              只需填到 <code className="font-mono">/v1</code> 或 <code className="font-mono">/v4</code>；
-              会自动补全 {draft.provider === 'anthropic' ? '/messages' : '/chat/completions'}。
+              默认官方地址，一般无需修改；会自动补全 <code className="font-mono">/chat/completions</code>。
             </p>
           </section>
 
           {/* API Key */}
           <section className="space-y-1.5">
-            <label className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
-              <KeyRound className="h-3 w-3" /> API Key
-            </label>
+            <div className="flex items-center justify-between gap-2">
+              <label className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+                <KeyRound className="h-3 w-3" /> API Key
+              </label>
+              <a
+                href="https://platform.deepseek.com/api_keys"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-0.5 text-[10.5px] text-primary hover:underline"
+              >
+                获取 Key
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            </div>
             <div className="relative">
               <input
                 type={showKey ? 'text' : 'password'}
@@ -254,7 +185,7 @@ export const AiSettingsDialog: React.FC<AiSettingsDialogProps> = ({
                   setDraft((prev) => ({ ...prev, apiKey: e.target.value }));
                   setTestState({ status: 'idle' });
                 }}
-                placeholder="sk-...（本地 Ollama 可留空）"
+                placeholder="sk-...（在 DeepSeek 控制台创建）"
                 spellCheck={false}
                 autoComplete="off"
                 className={cn(inputClass, 'pr-9 font-mono')}
@@ -270,25 +201,40 @@ export const AiSettingsDialog: React.FC<AiSettingsDialogProps> = ({
             </div>
             <p className="flex items-start gap-1 text-[10.5px] leading-relaxed text-muted-foreground/80">
               <ShieldCheck className="h-3 w-3 mt-0.5 shrink-0 text-emerald-600" />
-              仅保存在本机浏览器 localStorage，不会上传到本站；请求由浏览器直接发往你填写的 API 地址。
+              仅保存在本机浏览器 localStorage，不会上传到本站；请求由浏览器直接发往 DeepSeek。
             </p>
           </section>
 
           {/* Model */}
-          <section className="space-y-1.5">
+          <section className="space-y-2">
             <label className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
               <Bot className="h-3 w-3" /> 模型
             </label>
-            <input
-              value={draft.model}
-              onChange={(e) => {
-                setDraft((prev) => ({ ...prev, model: e.target.value }));
-                setTestState({ status: 'idle' });
-              }}
-              placeholder="gpt-4o-mini / deepseek-chat / claude-sonnet-4-5"
-              spellCheck={false}
-              className={cn(inputClass, 'font-mono')}
-            />
+            <div className="grid grid-cols-2 gap-2">
+              {DEEPSEEK_MODELS.map((model) => {
+                const active = draft.model === model.value;
+                return (
+                  <button
+                    key={model.value}
+                    onClick={() => {
+                      setDraft((prev) => ({ ...prev, model: model.value }));
+                      setTestState({ status: 'idle' });
+                    }}
+                    className={cn(
+                      'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-all active:scale-[0.98]',
+                      active
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
+                        : 'border-border hover:bg-muted/50'
+                    )}
+                  >
+                    <span className={cn('font-mono text-[11px]', active ? 'text-primary font-semibold' : 'text-foreground')}>
+                      {model.label}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{model.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
           </section>
 
           {/* Test connection */}
@@ -323,7 +269,7 @@ export const AiSettingsDialog: React.FC<AiSettingsDialogProps> = ({
             </div>
             {testState.status === 'error' && (
               <p className="text-[10.5px] leading-relaxed text-muted-foreground">
-                常见原因：Key 无效、Base URL 少了 /v1、模型名拼写错误，或服务商禁止浏览器跨域调用。
+                常见原因：Key 无效或余额不足、Base URL 不正确、模型名不存在，或网络无法访问 DeepSeek。
               </p>
             )}
             {formError && <p className="text-[11px] text-destructive">{formError}</p>}
