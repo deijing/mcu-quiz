@@ -47,6 +47,18 @@ import { AiSettingsDialog } from './components/AiSettingsDialog';
 import { MobileFilterSheet } from './components/MobileFilterSheet';
 import { MobileMoreSheet } from './components/MobileMoreSheet';
 import { ResumeHint, StorageBlockedHint } from './components/ResumeHint';
+import { ExamSetupDialog } from './components/ExamSetupDialog';
+import { ExamOverlay, ExamReport } from './components/ExamOverlay';
+import {
+  ExamConfig,
+  ExamResult,
+  ExamSession,
+  buildExamResult,
+  clearExamSession,
+  createExamSession,
+  loadExamSession,
+  saveExamSession,
+} from './lib/exam';
 
 // AI 解析面板按需加载，避免把 Markdown 渲染库打进首屏包
 const AiExplanationPanel = lazy(() =>
@@ -165,6 +177,13 @@ export const App: React.FC = () => {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [aiQuestion, setAiQuestion] = useState<Question | null>(null);
 
+  // 模拟考试：设置弹窗 / 进行中的场次（刷新可续考）/ 成绩单
+  const [isExamSetupOpen, setIsExamSetupOpen] = useState(false);
+  const [examSession, setExamSession] = useState<ExamSession | null>(() => loadExamSession());
+  const [examResult, setExamResult] = useState<ExamResult | null>(null);
+  // 交卷 / 自动交卷都要读最新会话，避免闭包拿到旧答案
+  const examSessionRef = useRef<ExamSession | null>(examSession);
+
   // Update HTML theme class
   useEffect(() => {
     const root = document.documentElement;
@@ -194,6 +213,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     saveAiCache(aiCache);
   }, [aiCache]);
+
+  // 考试进行中：刷新 / 关掉浏览器也能接着考
+  useEffect(() => {
+    examSessionRef.current = examSession;
+    if (examSession) saveExamSession(examSession);
+  }, [examSession]);
 
   // 记住乱序顺序，刷新后保持同一套题序
   useEffect(() => {
@@ -690,6 +715,71 @@ export const App: React.FC = () => {
     playSound('click', settings.soundEnabled);
   }, [currentQuestion?.id, restoreScrollTop, settings.soundEnabled]);
 
+  /* ---------------- 模拟考试 ---------------- */
+
+  const handleOpenExamSetup = useCallback(() => {
+    setIsExamSetupOpen(true);
+    playSound('click', settings.soundEnabled);
+  }, [settings.soundEnabled]);
+
+  const handleStartExam = useCallback(
+    (config: ExamConfig) => {
+      const session = createExamSession(config);
+      if (!session) return;
+      setExamResult(null);
+      setExamSession(session);
+      setIsExamSetupOpen(false);
+      playSound('click', settings.soundEnabled);
+    },
+    [settings.soundEnabled]
+  );
+
+  const handleExamSelect = useCallback((questionId: number, answer: string) => {
+    setExamSession((prev) =>
+      prev ? { ...prev, answers: { ...prev.answers, [questionId]: answer } } : prev
+    );
+    triggerHaptic('light');
+  }, []);
+
+  const handleExamGoto = useCallback((index: number) => {
+    setExamSession((prev) => (prev ? { ...prev, index } : prev));
+  }, []);
+
+  const handleExamSubmit = useCallback(() => {
+    // 从 ref 取最新会话：自动交卷是在作答后 260ms / 倒计时归零时触发的，
+    // 用闭包里的旧 session 会把最后一题判成“未答”。
+    const session = examSessionRef.current;
+    if (!session) return;
+    const result = buildExamResult(session);
+
+    // 交卷即判分：成绩写入答题记录，做错的题自动进错题本
+    setUserStatusMap((prev) => {
+      const next = { ...prev };
+      result.items.forEach((item) => {
+        next[item.question.id] = {
+          ...prev[item.question.id],
+          answered: true,
+          userAnswer: item.userAnswer,
+          isCorrect: item.isCorrect,
+          revealed: true,
+          answeredAt: Date.now(),
+        };
+      });
+      return next;
+    });
+
+    setExamResult(result);
+    setExamSession(null);
+    examSessionRef.current = null;
+    clearExamSession();
+    playSound('click', settings.soundEnabled);
+  }, [settings.soundEnabled]);
+
+  const handleExamAbandon = useCallback(() => {
+    setExamSession(null);
+    clearExamSession();
+  }, []);
+
   // AI 深度解析：未配置时先打开设置
   const handleOpenAi = useCallback(() => {
     if (!currentQuestion) return;
@@ -750,6 +840,9 @@ export const App: React.FC = () => {
       ) {
         return;
       }
+
+      // 模拟考试有自己的键盘处理（选项 / 翻题 / 答题卡），这里全部让行
+      if (examSession || examResult) return;
 
       if (e.key === 'Escape') {
         setIsSearchOpen(false);
@@ -848,6 +941,8 @@ export const App: React.FC = () => {
     handleAnswerChoice,
     handleAnswerJudge,
     handleModeChange,
+    examSession,
+    examResult,
   ]);
 
   // 10. Mobile Touch Gestures
@@ -901,6 +996,7 @@ export const App: React.FC = () => {
         onOpenAiSettings={() => setIsAiSettingsOpen(true)}
         onOpenFilter={() => setIsFilterOpen(true)}
         onOpenMore={() => setIsMoreOpen(true)}
+        onStartExam={handleOpenExamSetup}
         filterActive={
           settings.filterType !== 'all' || settings.selectedTag !== 'all' || settings.isShuffled
         }
@@ -1122,7 +1218,42 @@ export const App: React.FC = () => {
         onOpenAiSettings={() => setIsAiSettingsOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onResetProgress={handleResetAllProgress}
+        onStartExam={handleOpenExamSetup}
       />
+
+      {/* 模拟考试：抽题设置 */}
+      <ExamSetupDialog
+        isOpen={isExamSetupOpen}
+        onClose={() => setIsExamSetupOpen(false)}
+        onStart={handleStartExam}
+      />
+
+      {/* 模拟考试：考试中（占满视口，屏蔽主界面的键盘与滚动） */}
+      {examSession && (
+        <ExamOverlay
+          session={examSession}
+          onSelect={handleExamSelect}
+          onGoto={handleExamGoto}
+          onSubmit={handleExamSubmit}
+          onAbandon={handleExamAbandon}
+        />
+      )}
+
+      {/* 模拟考试：成绩单 */}
+      {examResult && (
+        <ExamReport
+          result={examResult}
+          onRetry={() => {
+            setExamResult(null);
+            setIsExamSetupOpen(true);
+          }}
+          onReviewWrong={() => {
+            setExamResult(null);
+            handleModeChange('wrong');
+          }}
+          onClose={() => setExamResult(null)}
+        />
+      )}
 
       {/* 12. AI Settings Dialog */}
       <AiSettingsDialog

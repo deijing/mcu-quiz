@@ -16,6 +16,7 @@ import {
   Sparkles,
   SlidersHorizontal,
   MoreHorizontal,
+  ClipboardList,
   Leaf
 } from 'lucide-react';
 import { Button } from './ui/button';
@@ -38,6 +39,7 @@ interface HeaderProps {
   onOpenAiSettings: () => void;
   onOpenFilter: () => void;
   onOpenMore: () => void;
+  onStartExam: () => void;
   filterActive: boolean;
 }
 
@@ -57,6 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAiSettings,
   onOpenFilter,
   onOpenMore,
+  onStartExam,
   filterActive,
 }) => {
   return (
@@ -236,6 +239,17 @@ export const Header: React.FC<HeaderProps> = ({
           className="h-8 w-8 text-muted-foreground hover:text-primary hidden lg:inline-flex"
         >
           <Sparkles className="h-4 w-4" />
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onStartExam}
+          title="模拟考试：随机抽题、限时作答、交卷自动判分"
+          className="hidden sm:inline-flex h-8 px-2.5 gap-1.5 rounded-full border-primary/30 text-primary hover:bg-primary/5 active:scale-95"
+        >
+          <ClipboardList className="h-3.5 w-3.5" />
+          <span className="hidden lg:inline text-xs font-medium">模拟考试</span>
         </Button>
 
         <Button

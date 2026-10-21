@@ -9,6 +9,8 @@ import {
   Sparkles,
   RotateCcw,
   Keyboard,
+  ClipboardList,
+  ChevronRight,
 } from 'lucide-react';
 import { Switch } from './ui/switch';
 import { StudyMode } from '../types/question';
@@ -31,6 +33,7 @@ interface MobileMoreSheetProps {
   onOpenAiSettings: () => void;
   onOpenShortcuts: () => void;
   onResetProgress: () => void;
+  onStartExam: () => void;
 }
 
 export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
@@ -49,6 +52,7 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
   onOpenAiSettings,
   onOpenShortcuts,
   onResetProgress,
+  onStartExam,
 }) => {
   if (!isOpen) return null;
 
@@ -92,6 +96,26 @@ export const MobileMoreSheet: React.FC<MobileMoreSheetProps> = ({
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+          {/* 模拟考试入口 */}
+          <button
+            onClick={() => {
+              onClose();
+              onStartExam();
+            }}
+            className="w-full flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-3 text-left transition-all active:scale-[0.98]"
+          >
+            <span className="h-9 w-9 rounded-lg bg-primary text-primary-foreground flex items-center justify-center shrink-0">
+              <ClipboardList className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-semibold text-foreground">模拟考试</span>
+              <span className="block text-[10.5px] text-muted-foreground mt-0.5">
+                随机抽题 · 限时作答 · 交卷自动判分
+              </span>
+            </span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+          </button>
+
           {/* 专项刷题 */}
           <section className="space-y-2">
             <h4 className="text-[11px] font-semibold text-muted-foreground">专项刷题</h4>
