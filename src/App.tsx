@@ -20,8 +20,13 @@ import {
   loadAiCache,
   saveAiCache,
   clearAiCache,
-  loadLastScroll,
-  saveLastScroll,
+  loadScrollTop,
+  saveScrollTop,
+  clearScrollMap,
+  loadLastQuestionId,
+  saveLastQuestionId,
+  clearLastQuestionIds,
+  isStorageAvailable,
   loadShuffledIds,
   saveShuffledIds,
   AppSettings
@@ -41,12 +46,20 @@ import { ResetProgressDialog } from './components/ResetProgressDialog';
 import { AiSettingsDialog } from './components/AiSettingsDialog';
 import { MobileFilterSheet } from './components/MobileFilterSheet';
 import { MobileMoreSheet } from './components/MobileMoreSheet';
+import { ResumeHint, StorageBlockedHint } from './components/ResumeHint';
 
 // AI 解析面板按需加载，避免把 Markdown 渲染库打进首屏包
 const AiExplanationPanel = lazy(() =>
   import('./components/AiExplanationPanel').then((m) => ({ default: m.AiExplanationPanel }))
 );
 
+
+const MODE_LABELS: Record<StudyMode, string> = {
+  recite: '背题速记',
+  practice: '做题自测',
+  wrong: '错题本',
+  starred: '收藏夹',
+};
 
 function shuffleQuestionIds(allIds: number[]): number[] {
   const ids = [...allIds];
@@ -106,19 +119,37 @@ export const App: React.FC = () => {
     return isValid ? saved : shuffleQuestionIds(allIds);
   });
 
-  // 3. Navigation & Animation State（刷新后回到上次的题号）
+  // 3. Navigation & Animation State（背题 / 自测 各记自己的题号与阅读位置）
   const [currentIndex, setCurrentIndex] = useState(() => {
     const list = buildFilteredQuestions(settings, userStatusMap, shuffledIds);
-    const index = list.findIndex((q) => q.id === settings.lastQuestionId);
+    // 优先用「当前模式」上次停下的题号；没有分模式记录的老数据回落到全局题号
+    const targetId = loadLastQuestionId(settings.mode) ?? settings.lastQuestionId;
+    const index = list.findIndex((q) => q.id === targetId);
     return index >= 0 ? index : 0;
   });
   const [slideDirection, setSlideDirection] = useState<'right' | 'left' | 'none'>('none');
 
   const mainRef = useRef<HTMLElement>(null);
   const scrollSaveTimer = useRef<number | null>(null);
-  const lastScrollQuestionRef = useRef<number | null>(null);
   const currentQuestionIdRef = useRef<number | undefined>(undefined);
+  // 上一道真正渲染过的题号：用于“离开时落盘、进入时恢复”
+  const lastAppliedQuestionRef = useRef<number | null>(null);
+  // 当前题目最新的模式 / 题号 / 滚动位置（滑动过程中只更新它，落盘走防抖）
+  const liveScrollRef = useRef<{ mode: StudyMode; id: number | undefined; top: number }>({
+    mode: settings.mode,
+    id: undefined,
+    top: 0,
+  });
   const wasShuffledRef = useRef(settings.isShuffled);
+
+  // 续刷提示 / 本地存储被禁用时的说明
+  const [resumeHint, setResumeHint] = useState<{
+    index: number;
+    hasScroll: boolean;
+    label?: string;
+    allowRestart?: boolean;
+  } | null>(null);
+  const [storageBlocked, setStorageBlocked] = useState(false);
 
   // 3. Modals State
   const [isSheetOpen, setIsSheetOpen] = useState(false);
@@ -200,50 +231,118 @@ export const App: React.FC = () => {
   const currentQuestion: Question | undefined = filteredQuestions[currentIndex];
   const currentStatus: QuestionUserStatus | undefined = currentQuestion ? userStatusMap[currentQuestion.id] : undefined;
 
-  // 记住当前题号，刷新后原样恢复
+  // 记住当前模式下的题号，重开后原样恢复（两种模式各记一份）
   useEffect(() => {
     const id = currentQuestion?.id;
     currentQuestionIdRef.current = id;
     if (!id) return;
+    saveLastQuestionId(settings.mode, id);
     setSettings((prev) => (prev.lastQuestionId === id ? prev : { ...prev, lastQuestionId: id }));
-  }, [currentQuestion?.id]);
+  }, [currentQuestion?.id, settings.mode]);
 
-  // 恢复上次的阅读位置（仅当还是同一道题时）
+  /**
+   * 把滚动位置写进滚动容器。
+   * 懒加载的代码高亮、字体与实际排版会让卡片在首帧之后继续变高，
+   * 一次性赋值容易被浏览器截断，所以随后几帧和内容尺寸变化时各补一次。
+   */
+  const restoreScrollTop = useCallback((top: number) => {
+    const target = Math.max(0, Math.round(top));
+    const apply = () => {
+      if (mainRef.current) mainRef.current.scrollTop = target;
+    };
+
+    apply();
+
+    let frames = 0;
+    const tick = () => {
+      apply();
+      frames += 1;
+      if (frames < 12) window.requestAnimationFrame(tick);
+    };
+    window.requestAnimationFrame(tick);
+
+    const scroller = mainRef.current;
+    const content = scroller?.firstElementChild as HTMLElement | null;
+    if (!scroller || !content || typeof ResizeObserver === 'undefined') return;
+
+    const startedAt = performance.now();
+    const observer = new ResizeObserver(() => {
+      if (performance.now() - startedAt > 2000) {
+        observer.disconnect();
+        return;
+      }
+      apply();
+    });
+    observer.observe(content);
+    window.setTimeout(() => observer.disconnect(), 2200);
+
+    // 用户一旦自己动手滚动，就不再回写位置，避免“抢滚动”
+    const stop = () => observer.disconnect();
+    scroller.addEventListener('wheel', stop, { once: true, passive: true });
+    scroller.addEventListener('touchstart', stop, { once: true, passive: true });
+  }, []);
+
+  // 首次进入：回到当前模式上次的题号，并回到那道题上次读到的高度
   useLayoutEffect(() => {
-    const saved = loadLastScroll();
-    if (saved && saved.id === currentQuestion?.id && saved.top > 0 && mainRef.current) {
-      mainRef.current.scrollTop = saved.top;
+    const id = currentQuestion?.id;
+    if (!id) return;
+
+    lastAppliedQuestionRef.current = id;
+    liveScrollRef.current = { mode: settings.mode, id, top: 0 };
+
+    // 无痕/隐私模式会禁用 localStorage，进度根本存不住，直接说明原因
+    if (!isStorageAvailable()) {
+      setStorageBlocked(true);
+      return;
     }
+
+    const savedTop = loadScrollTop(settings.mode, id);
+    if (savedTop > 0) restoreScrollTop(savedTop);
+    liveScrollRef.current = { mode: settings.mode, id, top: savedTop };
+
+    // 停在第 1 题且没有滚动过 = 全新开始，不必打扰
+    if (currentIndex > 0 || savedTop > 0) {
+      setResumeHint({ index: currentIndex, hasScroll: savedTop > 0 });
+    }
+    // 只在挂载时执行一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 切题时回到题目顶部；首次进入不重置，避免覆盖刚恢复的位置
+  // 切题：先把上一题读到的位置落盘，再恢复这一题自己的位置（没读过就回到顶部）
   useLayoutEffect(() => {
-    const id = currentQuestion?.id ?? null;
-    if (id === null) return;
-    if (lastScrollQuestionRef.current === null) {
-      lastScrollQuestionRef.current = id;
-      return;
+    const id = currentQuestion?.id;
+    if (!id) return;
+
+    const prevId = lastAppliedQuestionRef.current;
+    if (prevId === id) return;
+
+    if (prevId !== null) {
+      const live = liveScrollRef.current;
+      if (live.id === prevId && live.top > 0) saveScrollTop(live.mode, prevId, live.top);
     }
-    if (lastScrollQuestionRef.current !== id) {
-      lastScrollQuestionRef.current = id;
-      if (mainRef.current) mainRef.current.scrollTop = 0;
-    }
-  }, [currentQuestion?.id]);
+
+    lastAppliedQuestionRef.current = id;
+
+    const targetTop = loadScrollTop(settings.mode, id);
+    liveScrollRef.current = { mode: settings.mode, id, top: targetTop };
+    restoreScrollTop(targetTop);
+  }, [currentQuestion?.id, settings.mode, restoreScrollTop]);
 
   const handleMainScroll = useCallback(() => {
+    const id = currentQuestionIdRef.current;
+    const top = mainRef.current?.scrollTop ?? 0;
+    liveScrollRef.current = { mode: settings.mode, id, top };
+
     if (scrollSaveTimer.current !== null) window.clearTimeout(scrollSaveTimer.current);
     scrollSaveTimer.current = window.setTimeout(() => {
-      const id = currentQuestionIdRef.current;
-      if (!id) return;
-      saveLastScroll(id, mainRef.current?.scrollTop ?? 0);
-    }, 200);
-  }, []);
+      if (typeof id === 'number') saveScrollTop(settings.mode, id, top);
+    }, 250);
+  }, [settings.mode]);
 
   useEffect(() => {
     const persist = () => {
-      const id = currentQuestionIdRef.current;
-      if (id) saveLastScroll(id, mainRef.current?.scrollTop ?? 0);
+      const { mode, id, top } = liveScrollRef.current;
+      if (typeof id === 'number') saveScrollTop(mode, id, top);
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') persist();
@@ -334,6 +433,46 @@ export const App: React.FC = () => {
       }
     },
     [filteredQuestions, currentIndex, settings.soundEnabled]
+  );
+
+  // 切换模式：背题 / 自测 各自回到自己上次停下的题号与阅读位置
+  const handleModeChange = useCallback(
+    (next: StudyMode) => {
+      if (next === settings.mode) return;
+
+      setSettings((prev) => ({ ...prev, mode: next }));
+
+      const targetId = loadLastQuestionId(next);
+      if (targetId) {
+        const nextList = buildFilteredQuestions(
+          { ...settings, mode: next },
+          userStatusMap,
+          shuffledIds
+        );
+        const idx = nextList.findIndex((q) => q.id === targetId);
+        if (idx >= 0) {
+          const savedTop = loadScrollTop(next, targetId);
+          setSlideDirection('none');
+          setCurrentIndex(idx);
+          // 两种模式恰好停在同一道题时题号不变，切题逻辑不会触发，这里主动恢复
+          lastAppliedQuestionRef.current = targetId;
+          liveScrollRef.current = { mode: next, id: targetId, top: savedTop };
+          restoreScrollTop(savedTop);
+          // 停在同一道题时没什么好提示的，避免噪音
+          if (idx !== currentIndex) {
+            setResumeHint({
+              index: idx,
+              hasScroll: savedTop > 0,
+              label: `已切到${MODE_LABELS[next]}上次进度`,
+              allowRestart: false,
+            });
+          }
+        }
+      }
+
+      playSound('click', settings.soundEnabled);
+    },
+    [settings, userStatusMap, shuffledIds, currentIndex, restoreScrollTop]
   );
 
   // 8. Answer Handlers
@@ -492,6 +631,9 @@ export const App: React.FC = () => {
   const handleConfirmReset = useCallback(
     ({ keepStarred }: { keepStarred: boolean }) => {
       clearAllProgress();
+      clearScrollMap();
+      clearLastQuestionIds();
+      setResumeHint(null);
 
       setUserStatusMap((prev) => {
         if (!keepStarred) return {};
@@ -535,6 +677,18 @@ export const App: React.FC = () => {
     },
     [settings.isShuffled, settings.soundEnabled]
   );
+
+  // 续刷提示里的“从头开始”：清空阅读位置并回到第 1 题顶部，不改变做题记录
+  const handleResumeRestart = useCallback(() => {
+    clearScrollMap();
+    liveScrollRef.current = { mode: settings.mode, id: currentQuestion?.id, top: 0 };
+    // 已经停在第 1 题时 setCurrentIndex 不会触发切题逻辑，这里直接把位置归零
+    restoreScrollTop(0);
+    setSlideDirection('none');
+    setCurrentIndex(0);
+    setResumeHint(null);
+    playSound('click', settings.soundEnabled);
+  }, [currentQuestion?.id, restoreScrollTop, settings.soundEnabled]);
 
   // AI 深度解析：未配置时先打开设置
   const handleOpenAi = useCallback(() => {
@@ -647,10 +801,7 @@ export const App: React.FC = () => {
         handleResetCurrent();
       } else if (key === 'M') {
         e.preventDefault();
-        setSettings((prev) => ({
-          ...prev,
-          mode: prev.mode === 'recite' ? 'practice' : 'recite',
-        }));
+        handleModeChange(settings.mode === 'recite' ? 'practice' : 'recite');
       }
 
       // Choice answers (A, B, C, D or 1, 2, 3, 4)
@@ -696,6 +847,7 @@ export const App: React.FC = () => {
     handleResetCurrent,
     handleAnswerChoice,
     handleAnswerJudge,
+    handleModeChange,
   ]);
 
   // 10. Mobile Touch Gestures
@@ -733,7 +885,7 @@ export const App: React.FC = () => {
       {/* 1. Navbar Header */}
       <Header
         mode={settings.mode}
-        onModeChange={(m) => setSettings((prev) => ({ ...prev, mode: m }))}
+        onModeChange={handleModeChange}
         wrongCount={stats.wrongCount}
         starredCount={stats.starredCount}
         theme={settings.theme}
@@ -793,7 +945,7 @@ export const App: React.FC = () => {
               <span className="font-normal text-muted-foreground">· {filteredQuestions.length} 题</span>
             </span>
             <button
-              onClick={() => setSettings((prev) => ({ ...prev, mode: 'practice' }))}
+              onClick={() => handleModeChange('practice')}
               className="text-[11px] font-medium text-primary active:opacity-70"
             >
               退出
@@ -958,7 +1110,7 @@ export const App: React.FC = () => {
         isOpen={isMoreOpen}
         onClose={() => setIsMoreOpen(false)}
         mode={settings.mode}
-        onModeChange={(m) => setSettings((prev) => ({ ...prev, mode: m }))}
+        onModeChange={handleModeChange}
         wrongCount={stats.wrongCount}
         starredCount={stats.starredCount}
         theme={settings.theme}
@@ -981,6 +1133,21 @@ export const App: React.FC = () => {
         onSave={handleSaveAiConfig}
         onClearCache={handleClearAiCache}
       />
+
+      {/* 13. 续刷提示：二次打开 / 切回某模式时明确告知已回到上次进度 */}
+      {resumeHint && (
+        <ResumeHint
+          index={resumeHint.index}
+          total={filteredQuestions.length}
+          hasScroll={resumeHint.hasScroll}
+          label={resumeHint.label}
+          onRestart={resumeHint.allowRestart === false ? undefined : handleResumeRestart}
+          onDismiss={() => setResumeHint(null)}
+        />
+      )}
+
+      {/* 14. 本地存储被禁用（无痕模式）时的说明 */}
+      {storageBlocked && <StorageBlockedHint onDismiss={() => setStorageBlocked(false)} />}
     </div>
   );
 };

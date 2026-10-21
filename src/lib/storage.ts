@@ -159,33 +159,193 @@ export function saveShuffledIds(ids: number[]) {
   }
 }
 
-export interface SavedScroll {
+/* ---------------- 续刷进度：背题 / 自测 各自记一份 ---------------- */
+
+// v2 的键是「模式:题号」，两种模式的阅读位置互不干扰
+const STORAGE_KEY_SCROLL_MAP = 'mcu_quiz_scroll_map_v2';
+const STORAGE_KEY_SCROLL_MAP_V1 = 'mcu_quiz_scroll_map_v1';
+const STORAGE_KEY_SCROLL_LEGACY = STORAGE_KEY_SCROLL;
+const STORAGE_KEY_LAST_BY_MODE = 'mcu_quiz_last_question_by_mode_v1';
+const MAX_SCROLL_ENTRIES = 400;
+
+// 只有背题 / 自测需要独立记忆，错题本与收藏夹同样按模式隔离保存
+const SEPARATE_MODES: StudyMode[] = ['recite', 'practice', 'wrong', 'starred'];
+
+interface SavedScroll {
   id: number;
   top: number;
 }
 
-export function loadLastScroll(): SavedScroll | null {
-  if (typeof window === 'undefined') return null;
+const scrollKey = (mode: StudyMode, questionId: number) => `${mode}:${questionId}`;
+
+let scrollMapCache: Record<string, number> | null = null;
+let lastByModeCache: Partial<Record<StudyMode, number>> | null = null;
+
+/** 把旧版本（题号直键 / 单条记录）迁移成「模式:题号」，两种模式各继承一份 */
+function migrateLegacyScroll(target: Record<string, number>) {
+  const expand = (id: number, top: unknown) => {
+    if (!Number.isInteger(id) || id <= 0 || typeof top !== 'number' || !(top > 0)) return;
+    (['recite', 'practice'] as StudyMode[]).forEach((mode) => {
+      target[scrollKey(mode, id)] = Math.round(top);
+    });
+  };
+
   try {
-    const raw = localStorage.getItem(STORAGE_KEY_SCROLL);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<SavedScroll>;
-    if (typeof parsed.id !== 'number' || typeof parsed.top !== 'number') return null;
-    return { id: parsed.id, top: parsed.top > 0 ? parsed.top : 0 };
+    const v1 = localStorage.getItem(STORAGE_KEY_SCROLL_MAP_V1);
+    if (v1) {
+      Object.entries(JSON.parse(v1) as Record<string, unknown>).forEach(([key, value]) => {
+        if (/^\d+$/.test(key)) expand(Number(key), value);
+      });
+    }
   } catch {
-    return null;
+    // 忽略损坏的旧数据
+  }
+
+  try {
+    const v0 = localStorage.getItem(STORAGE_KEY_SCROLL_LEGACY);
+    if (v0) {
+      const parsed = JSON.parse(v0) as Partial<SavedScroll>;
+      if (typeof parsed.id === 'number') expand(parsed.id, parsed.top);
+    }
+  } catch {
+    // 忽略损坏的旧数据
   }
 }
 
-export function saveLastScroll(id: number, scrollTop: number) {
-  if (typeof window === 'undefined') return;
+function readScrollMap(): Record<string, number> {
+  if (scrollMapCache) return scrollMapCache;
+
+  const map: Record<string, number> = {};
+  scrollMapCache = map;
+  if (typeof window === 'undefined') return map;
+
   try {
-    localStorage.setItem(
-      STORAGE_KEY_SCROLL,
-      JSON.stringify({ id, top: Math.max(0, Math.round(scrollTop)) })
-    );
+    const raw = localStorage.getItem(STORAGE_KEY_SCROLL_MAP);
+    if (raw) {
+      Object.entries(JSON.parse(raw) as Record<string, unknown>).forEach(([key, value]) => {
+        const id = Number(key.slice(key.lastIndexOf(':') + 1));
+        if (Number.isInteger(id) && id > 0 && typeof value === 'number' && value > 0) {
+          map[key] = Math.round(value);
+        }
+      });
+    } else {
+      migrateLegacyScroll(map);
+    }
+  } catch {
+    // 存储不可用或数据损坏：按“没有阅读记录”处理
+  }
+
+  return map;
+}
+
+/** 读取某模式某题上次停留在的位置；从未读过返回 0 */
+export function loadScrollTop(mode: StudyMode, questionId: number): number {
+  return readScrollMap()[scrollKey(mode, questionId)] ?? 0;
+}
+
+/** 记录某模式某题的阅读位置；传 0 表示回到顶部（并清掉这条记录） */
+export function saveScrollTop(mode: StudyMode, questionId: number, scrollTop: number) {
+  if (typeof window === 'undefined' || !Number.isInteger(questionId)) return;
+
+  const map = readScrollMap();
+  const key = scrollKey(mode, questionId);
+  const top = Math.max(0, Math.round(scrollTop));
+
+  if (top <= 0) {
+    if (map[key] === undefined) return;
+    delete map[key];
+  } else {
+    map[key] = top;
+  }
+
+  // 记录过多时丢弃最早写入的（对象键顺序即写入顺序）
+  const keys = Object.keys(map);
+  if (keys.length > MAX_SCROLL_ENTRIES) {
+    keys.slice(0, keys.length - MAX_SCROLL_ENTRIES).forEach((old) => delete map[old]);
+  }
+
+  try {
+    localStorage.setItem(STORAGE_KEY_SCROLL_MAP, JSON.stringify(map));
   } catch {
     // Ignore storage quota errors
+  }
+}
+
+export function clearScrollMap() {
+  if (typeof window === 'undefined') return;
+  scrollMapCache = {};
+  try {
+    localStorage.removeItem(STORAGE_KEY_SCROLL_MAP);
+    localStorage.removeItem(STORAGE_KEY_SCROLL_MAP_V1);
+    localStorage.removeItem(STORAGE_KEY_SCROLL_LEGACY);
+  } catch {
+    // Ignore
+  }
+}
+
+function readLastByMode(): Partial<Record<StudyMode, number>> {
+  if (lastByModeCache) return lastByModeCache;
+
+  const map: Partial<Record<StudyMode, number>> = {};
+  lastByModeCache = map;
+  if (typeof window === 'undefined') return map;
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_LAST_BY_MODE);
+    if (!raw) return map;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    SEPARATE_MODES.forEach((mode) => {
+      const id = parsed[mode];
+      if (typeof id === 'number' && Number.isInteger(id) && id > 0) map[mode] = id;
+    });
+  } catch {
+    // 忽略损坏数据
+  }
+
+  return map;
+}
+
+/** 某模式上次停在第几题；没有记录返回 null */
+export function loadLastQuestionId(mode: StudyMode): number | null {
+  const id = readLastByMode()[mode];
+  return typeof id === 'number' ? id : null;
+}
+
+/** 记住某模式当前停在第几题 */
+export function saveLastQuestionId(mode: StudyMode, questionId: number) {
+  if (typeof window === 'undefined' || !Number.isInteger(questionId) || questionId <= 0) return;
+
+  const map = readLastByMode();
+  if (map[mode] === questionId) return;
+  map[mode] = questionId;
+
+  try {
+    localStorage.setItem(STORAGE_KEY_LAST_BY_MODE, JSON.stringify(map));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function clearLastQuestionIds() {
+  if (typeof window === 'undefined') return;
+  lastByModeCache = {};
+  try {
+    localStorage.removeItem(STORAGE_KEY_LAST_BY_MODE);
+  } catch {
+    // Ignore
+  }
+}
+
+/** 浏览器是否允许写入 localStorage（无痕模式、隐私设置会禁止） */
+export function isStorageAvailable(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const probe = '__mcu_quiz_probe__';
+    window.localStorage.setItem(probe, '1');
+    window.localStorage.removeItem(probe);
+    return true;
+  } catch {
+    return false;
   }
 }
 
